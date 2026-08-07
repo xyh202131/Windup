@@ -5,6 +5,8 @@ export interface Project {
   id: string
   /** Project 所属用户 ID；认证来源尚未冻结。 */
   ownerId: string
+  /** 后端关联的工作流 ID；旧数据或尚未关联时为 null。 */
+  workflowId?: string | null
   name: string
   /** 游戏视角，见 CHARACTER_PERSPECTIVE。 */
   perspective: CharacterPerspective
@@ -27,6 +29,9 @@ export interface Project {
 
 /** 新建项目的入参。 */
 export interface CreateProjectInput {
+  /** 认证模块接入前可省略，由组合层使用当前开发用户。 */
+  ownerId?: string
+  workflowId?: string | null
   name: string
   perspective: CharacterPerspective
   directionalMovement: DirectionalMovement
@@ -35,14 +40,8 @@ export interface CreateProjectInput {
   sampleImageUrl?: string | null
 }
 
-/** 更新项目设置的入参；未提供的字段保持不变。 */
-export interface UpdateProjectInput {
-  name?: string
-  perspective?: CharacterPerspective
-  directionalMovement?: DirectionalMovement
-  spriteSize?: { width: number; height: number }
-  gameStyle?: string | null
-  sampleImageUrl?: string | null
+export interface ProjectPageQuery extends PageQuery {
+  ownerId?: string
 }
 
 /** 前端使用的游戏视角枚举；后端映射尚未冻结。 */
@@ -74,9 +73,8 @@ export const SPRITE_SIZES = [32, 64, 128, 256, 512, 1024, 2048] as const
 
 /** Project 对应的一组后端接口。 */
 export interface ProjectApis {
-  list(query?: PageQuery): Promise<Paged<Project>>
+  list(query?: ProjectPageQuery): Promise<Paged<Project>>
   get(id: Project['id']): Promise<Project>
   create(input: CreateProjectInput): Promise<Project>
-  update(id: Project['id'], input: UpdateProjectInput): Promise<Project>
   remove(id: Project['id']): Promise<void>
 }
