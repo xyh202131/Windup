@@ -109,4 +109,28 @@ describe('PlaytestEntryPage', () => {
     expect(await screen.findByText('没有可预览的动作，请先完成一次动作生成')).toBeTruthy()
     expect(screen.queryByText('项目文件夹')).toBeNull()
   })
+
+  it('本地项目接口不可用时进入内置 Playtest 工作台', async () => {
+    render(
+      <MemoryRouter initialEntries={['/playtest']}>
+        <Routes>
+          <Route
+            path="/playtest"
+            element={
+              <PlaytestEntryPage
+                apis={{
+                  projects: { list: vi.fn().mockRejectedValue(new Error('backend offline')) },
+                  characters: { listByProject: vi.fn() },
+                }}
+              />
+            }
+          />
+          <Route path="/playtest/demo" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('/playtest/demo')).toBeTruthy()
+    expect(screen.queryByText('Playtest 数据读取失败')).toBeNull()
+  })
 })

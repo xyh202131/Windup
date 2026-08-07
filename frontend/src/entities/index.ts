@@ -1,7 +1,12 @@
 /**
  * entities 唯一公开入口。外部不得绕过本文件访问内部文件。
- * 本次只提交类型与接口，不提交实现。
+ * 外部只从这里使用实体契约与已经落地的实体能力。
  */
+
+/* 用户 —— 认证态与账户资料。 */
+export { createUserApis } from './user/api'
+export type { CreateUserApisOptions } from './user/api'
+export type { AuthTokens, User, UserApis } from './user'
 
 /* 项目 —— 全局约束：视角、朝向、精灵尺寸、画风 */
 export { CHARACTER_PERSPECTIVE, DIRECTIONAL_MOVEMENT, SPRITE_SIZES } from './project'
@@ -12,7 +17,6 @@ export type {
   DirectionalMovement,
   Project,
   ProjectApis,
-  UpdateProjectInput,
 } from './project'
 
 /* 角色 —— 资产本体；造型、动作、帧都在这棵树里 */
@@ -32,32 +36,30 @@ export type {
 } from './character'
 export { createCharacterApis } from './character/api'
 
-/* 动作模板 —— 能跨角色复用的配方 */
-export type { ActionTemplate, ActionTemplateApis } from './action-template'
-
-/* 生成 —— 业务数据，不是「调用生成能力」；后端的 task 就是它，不另立实体 */
+/* 生成 —— 业务数据，不是「调用生成能力」 */
+export { CHARACTER_ACTION_FRAME_COUNT } from './generation'
+export { createGenerationApis } from './generation/api'
 export type {
-  CharacterTemplateGenerationInput,
-  CharacterTemplateGenerationResult,
-  CompleteAnimationGenerationInput,
-  CompleteAnimationGenerationResult,
-  FirstFrameGenerationInput,
-  FirstFrameGenerationResult,
-  GeneratedImage,
+  CharacterActionFrame,
+  CharacterActionGenerationInput,
+  CharacterActionOutput,
+  CharacterImageGenerationInput,
+  CharacterImageOutput,
   Generation,
   GenerationApis,
   GenerationEvent,
   GenerationInput,
   GenerationResult,
   GenerationResultFor,
+  GenerationTaskStatus,
   GenerationType,
-  TaskStatus,
 } from './generation'
 
 /* 媒体引用 —— 不承诺 URL 或后端 Media ID 的具体表示 */
-export type { MediaReference } from './media'
+export { createMediaApis } from './media/api'
+export type { MediaApis, MediaCategory, MediaReference } from './media'
 
-/* Playtest 核验 —— 只保存某个动作当前的核验结论，不承担历史记录。 */
+/* Playtest 核验 —— 每个动作当前最新的核验结论，不形成历史版本 */
 export { createPlaytestInspectionApis } from './playtest-inspection/api'
 export type {
   PlaytestInspection,
@@ -68,18 +70,23 @@ export type {
 } from './playtest-inspection'
 
 /* 工作流 —— 节点与运行状态都由前端管理 */
-export { WORKFLOW_STEP_ORDER } from './workflow-run'
+export { createWorkflowRunStore, WORKFLOW_NODE_ORDER } from './workflow-run'
 export type {
+  CharacterSetupNodeInput,
+  CharacterSetupWorkflowNode,
+  CharacterTemplateWorkflowNode,
+  ActionFirstFrameWorkflowNode,
+  ActionFullFrameWorkflowNode,
   CreateWorkflowRunInput,
   ExportStatus,
   GenerationStatus,
-  WorkflowDriver,
-  WorkflowStep,
-  WorkflowStepStatus,
-  WorkflowStepType,
-  WorkflowRevision,
-  WorkflowRevisionStatus,
+  WorkflowNode,
+  WorkflowNodeStatus,
+  WorkflowNodeType,
   WorkflowRun,
+  WorkflowRunStore,
   WorkflowRunPurpose,
   WorkflowRunStatus,
+  WorkflowRevision,
+  CreateWorkflowRunStoreOptions,
 } from './workflow-run'

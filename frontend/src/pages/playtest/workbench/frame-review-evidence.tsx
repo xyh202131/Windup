@@ -35,6 +35,10 @@ function optionalPixels(value: number | null): string {
   return value === null ? '不适用' : `${value.toFixed(1)} px`
 }
 
+function optionalPercent(value: number | null | undefined): string {
+  return value === null || value === undefined ? '不适用' : `${(value * 100).toFixed(1)}%`
+}
+
 function StateBadge({ state }: { state: EvidenceState }) {
   return (
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATE_CLASSES[state]}`}>
@@ -198,6 +202,16 @@ function EvidenceContent({
             }
             state={frame.areaState}
           />
+          <EvidenceRow
+            label="结构相似度（SSIM）"
+            value={optionalPercent(frame.previousDelta?.visual?.structuralSimilarity)}
+            state={frame.appearanceState}
+          />
+          <EvidenceRow
+            label="透明轮廓重合度"
+            value={optionalPercent(frame.previousDelta?.visual?.silhouetteIoU)}
+            state={frame.appearanceState}
+          />
         </dl>
       </div>
 
@@ -255,6 +269,15 @@ function EvidenceContent({
                 : `最大 ${summary.maxAreaDeltaPercent.toFixed(1)}% / 阈值 ${summary.areaThresholdPercent.toFixed(1)}%`
             }
             state={summary.areaState}
+          />
+          <EvidenceRow
+            label="结构与外观连续性"
+            value={
+              summary.maxVisualChange === null || summary.visualChangeThreshold === null
+                ? '不适用'
+                : `最大变化 ${optionalPercent(summary.maxVisualChange)}，中值 ${optionalPercent(summary.medianVisualChange)}，阈值 ${optionalPercent(summary.visualChangeThreshold)}`
+            }
+            state={summary.appearanceState}
           />
         </dl>
       </div>

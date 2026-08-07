@@ -46,8 +46,14 @@ describe('measureFrameGeometry', () => {
       coverageRatio: 0.25,
       fingerprint: expect.any(Array),
       contentHash: expect.any(String),
+      visualDescriptor: {
+        size: 32,
+        alpha: expect.any(Array),
+        luminance: expect.any(Array),
+      },
     })
     expect(geometry?.fingerprint).toHaveLength(64)
+    expect(geometry?.visualDescriptor?.alpha).toHaveLength(32 * 32)
   })
 
   it('produces different compact fingerprints for different silhouettes with equal bounds', () => {

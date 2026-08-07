@@ -7,7 +7,7 @@ afterEach(() => {
 })
 
 describe('character API adapter', () => {
-  it('preserves an action loop flag when saving the complete character tree', async () => {
+  it('preserves action playback metadata when saving the complete character tree', async () => {
     const backendCharacter = {
       id: 25,
       project_id: 3,
@@ -50,11 +50,15 @@ describe('character API adapter', () => {
     await apis.update(character)
 
     expect(character.outfits[0]?.actions[0]?.loop).toBe(true)
+    expect(character.outfits[0]?.actions[0]?.expectedFrameCount).toBe(1)
     const updateRequest = fetchMock.mock.calls[1]?.[1] as RequestInit
     const updateBody = JSON.parse(String(updateRequest.body)) as {
-      character_data: { outfits: Array<{ actions: Array<{ loop: boolean }> }> }
+      character_data: {
+        outfits: Array<{ actions: Array<{ loop: boolean; frame_count: number }> }>
+      }
     }
     expect(updateBody.character_data.outfits[0]?.actions[0]?.loop).toBe(true)
+    expect(updateBody.character_data.outfits[0]?.actions[0]?.frame_count).toBe(1)
   })
 
   it('loads every character page for a project instead of truncating after 100 items', async () => {

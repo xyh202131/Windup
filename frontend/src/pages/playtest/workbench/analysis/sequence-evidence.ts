@@ -3,6 +3,7 @@ import type { Frame } from '@/entities/character'
 import type { PlaytestActionType } from '../model/types'
 import type { FrameGeometry } from './frame-geometry'
 import { deriveLocalQualityPolicy, type CanvasBaseline } from './quality-policy'
+import { compareVisualDescriptors, type VisualSimilarity } from './visual-similarity'
 
 export type EvidenceState = 'normal' | 'attention' | 'anomaly' | 'not_applicable'
 
@@ -14,6 +15,7 @@ export type QualityFindingCode =
   | 'coverage_too_low'
   | 'coverage_too_high'
   | 'duplicate_frame'
+  | 'appearance_spike'
   | 'motion_spike'
   | 'foot_drift'
   | 'height_drift'
@@ -42,6 +44,7 @@ export interface AdjacentFrameDelta {
   dy: number
   distance: number
   areaDeltaPercent: number
+  visual: VisualSimilarity | null
 }
 
 export interface MotionVector {
@@ -60,6 +63,7 @@ export interface FrameReviewEvidence {
   coverageState: EvidenceState
   movementState: EvidenceState
   areaState: EvidenceState
+  appearanceState: EvidenceState
 }
 
 export interface SequenceReviewEvidence {
@@ -78,11 +82,15 @@ export interface SequenceReviewEvidence {
     areaThresholdPercent: number
     expectedCanvas: CanvasBaseline | null
     maxAreaDeltaPercent: number | null
+    medianVisualChange: number | null
+    maxVisualChange: number | null
+    visualChangeThreshold: number | null
     canvasState: EvidenceState
     footState: EvidenceState
     heightState: EvidenceState
     movementState: EvidenceState
     areaState: EvidenceState
+    appearanceState: EvidenceState
   }
 }
 
@@ -93,6 +101,18 @@ function medianAbsoluteDeviation(values: readonly number[], center: number | nul
 
 function framesAreIdentical(left: FrameGeometry, right: FrameGeometry): boolean {
   return left.contentHash !== undefined && left.contentHash === right.contentHash
+}
+
+function framesAreNearDuplicates(visual: VisualSimilarity | null): boolean {
+  return visual !== null && visual.change <= 0.06 && visual.silhouetteIoU >= 0.97
+}
+
+function visualChangeFloor(actionType: PlaytestActionType): number {
+  if (actionType === 'idle') return 0.16
+  if (actionType === 'walk') return 0.22
+  if (actionType === 'crouch') return 0.28
+  if (actionType === 'jump') return 0.4
+  return 0.36
 }
 
 function isCropped(geometry: FrameGeometry, margin: { x: number; y: number }): boolean {
@@ -135,6 +155,7 @@ function adjacentDelta(previous: FrameGeometry, current: FrameGeometry): Adjacen
       (Math.abs(current.opaquePixels - previous.opaquePixels) /
         Math.max(current.opaquePixels, previous.opaquePixels)) *
       100,
+    visual: compareVisualDescriptors(previous.visualDescriptor, current.visualDescriptor),
   }
 }
 
@@ -188,6 +209,9 @@ export function buildSequenceEvidence(
   const availableDeltas = deltas.flatMap((delta) => (delta === null ? [] : [delta]))
   const steps = availableDeltas.map((delta) => delta.distance)
   const areaDeltas = availableDeltas.map((delta) => delta.areaDeltaPercent)
+  const visualChanges = availableDeltas.flatMap((delta) =>
+    delta.visual === null ? [] : [delta.visual.change],
+  )
   const medianStep = median(steps)
   const movementMad = medianAbsoluteDeviation(steps, medianStep)
   const relativeMovementThreshold =
@@ -204,6 +228,20 @@ export function buildSequenceEvidence(
       : Math.min(relativeMovementThreshold, policy.movementCeiling)
   const maxStep = steps.length === 0 ? null : Math.max(...steps)
   const maxAreaDeltaPercent = areaDeltas.length === 0 ? null : Math.max(...areaDeltas)
+  const medianVisualChange = median(visualChanges)
+  const visualChangeMad = medianAbsoluteDeviation(visualChanges, medianVisualChange)
+  const visualChangeThreshold =
+    medianVisualChange === null
+      ? null
+      : Math.min(
+          0.62,
+          Math.max(
+            visualChangeFloor(actionType),
+            medianVisualChange * 2.2 + 0.03,
+            medianVisualChange + (visualChangeMad ?? 0) * 3 + 0.04,
+          ),
+        )
+  const maxVisualChange = visualChanges.length === 0 ? null : Math.max(...visualChanges)
   const baselineGeometries = readyGeometries.filter(isBaselineGeometry)
   const footDrift = spread(baselineGeometries.map((geometry) => geometry.footY))
   const heightDrift = spread(baselineGeometries.map((geometry) => geometry.subjectHeight))
@@ -224,6 +262,7 @@ export function buildSequenceEvidence(
         coverageState: 'not_applicable',
         movementState: 'not_applicable',
         areaState: 'not_applicable',
+        appearanceState: 'not_applicable',
       }
     }
 
@@ -261,6 +300,14 @@ export function buildSequenceEvidence(
           : delta.areaDeltaPercent > policy.areaDeltaThresholdPercent
             ? 'anomaly'
             : 'normal',
+      appearanceState:
+        delta?.visual === null || delta?.visual === undefined || visualChangeThreshold === null
+          ? 'not_applicable'
+          : delta.visual.change > visualChangeThreshold
+            ? 'anomaly'
+            : framesAreNearDuplicates(delta.visual)
+              ? 'attention'
+              : 'normal',
     }
   })
 
@@ -330,13 +377,22 @@ export function buildSequenceEvidence(
 
     const previous = results[index - 1]
     if (previous?.status !== 'ready') return
-    if (framesAreIdentical(previous.geometry, geometry)) {
+    const visual = deltas[index]?.visual ?? null
+    if (framesAreIdentical(previous.geometry, geometry) || framesAreNearDuplicates(visual)) {
       findings.push({
         code: 'duplicate_frame',
         severity: 'warning',
         frameIndex: index,
-        message: '当前帧与上一帧完全相同',
-        metrics: {},
+        message: framesAreIdentical(previous.geometry, geometry)
+          ? '当前帧与上一帧完全相同'
+          : '当前帧与上一帧几乎没有有效变化',
+        metrics:
+          visual === null
+            ? {}
+            : {
+                structuralSimilarity: visual.structuralSimilarity,
+                silhouetteIoU: visual.silhouetteIoU,
+              },
       })
     }
 
@@ -357,6 +413,25 @@ export function buildSequenceEvidence(
         frameIndex: index,
         message: '相邻帧主体轮廓面积变化过大',
         metrics: { percent: delta.areaDeltaPercent },
+      })
+    }
+    if (
+      delta?.visual !== null &&
+      delta?.visual !== undefined &&
+      visualChangeThreshold !== null &&
+      delta.visual.change > visualChangeThreshold
+    ) {
+      findings.push({
+        code: 'appearance_spike',
+        severity: 'error',
+        frameIndex: index,
+        message: '角色结构或外观与相邻帧差异过大',
+        metrics: {
+          change: delta.visual.change,
+          threshold: visualChangeThreshold,
+          structuralSimilarity: delta.visual.structuralSimilarity,
+          silhouetteIoU: delta.visual.silhouetteIoU,
+        },
       })
     }
 
@@ -381,7 +456,10 @@ export function buildSequenceEvidence(
   })
 
   if (closingDelta !== null && firstResult?.status === 'ready' && lastResult?.status === 'ready') {
-    if (framesAreIdentical(lastResult.geometry, firstResult.geometry)) {
+    if (
+      framesAreIdentical(lastResult.geometry, firstResult.geometry) ||
+      framesAreNearDuplicates(closingDelta.visual)
+    ) {
       findings.push({
         code: 'duplicate_frame',
         severity: 'warning',
@@ -406,6 +484,24 @@ export function buildSequenceEvidence(
         frameIndex: 0,
         message: '循环首尾轮廓面积变化过大',
         metrics: { percent: closingDelta.areaDeltaPercent },
+      })
+    }
+    if (
+      closingDelta.visual !== null &&
+      visualChangeThreshold !== null &&
+      closingDelta.visual.change > visualChangeThreshold
+    ) {
+      findings.push({
+        code: 'appearance_spike',
+        severity: 'error',
+        frameIndex: 0,
+        message: '循环首尾的角色结构或外观无法平滑衔接',
+        metrics: {
+          change: closingDelta.visual.change,
+          threshold: visualChangeThreshold,
+          structuralSimilarity: closingDelta.visual.structuralSimilarity,
+          silhouetteIoU: closingDelta.visual.silhouetteIoU,
+        },
       })
     }
   }
@@ -450,6 +546,9 @@ export function buildSequenceEvidence(
       areaThresholdPercent: policy.areaDeltaThresholdPercent,
       expectedCanvas: policy.expectedCanvas,
       maxAreaDeltaPercent,
+      medianVisualChange,
+      maxVisualChange,
+      visualChangeThreshold,
       canvasState:
         policy.expectedCanvas === null
           ? 'not_applicable'
@@ -491,6 +590,12 @@ export function buildSequenceEvidence(
         maxAreaDeltaPercent === null
           ? 'not_applicable'
           : maxAreaDeltaPercent > policy.areaDeltaThresholdPercent
+            ? 'anomaly'
+            : 'normal',
+      appearanceState:
+        maxVisualChange === null || visualChangeThreshold === null
+          ? 'not_applicable'
+          : maxVisualChange > visualChangeThreshold
             ? 'anomaly'
             : 'normal',
     },

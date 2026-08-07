@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
 
+import { buildPlaytestPath } from '@/features/publish'
+
 import { loadPlayableCharacters, type PlaytestAssetSourceApis } from './assets'
-import { buildPlaytestPath } from './path'
 
 export type PlaytestEntryApis = PlaytestAssetSourceApis
 
@@ -15,6 +16,8 @@ const initialState: EntryState = {
   target: null,
   message: '正在进入 Playtest 工作台',
 }
+
+const localPlaytestPath = '/playtest/demo'
 
 /**
  * Playtest 的根路由只是工作台入口，不承担项目目录或资产管理职责。
@@ -36,7 +39,14 @@ export function PlaytestEntryPage({ apis }: { apis: PlaytestEntryApis }) {
         }
       },
       () => {
-        if (!cancelled) setState({ target: null, message: 'Playtest 数据读取失败' })
+        if (cancelled) return
+        // 本地后端尚未启动或正在调整时，使用仓库内的完整帧素材继续调试工作台。
+        // 生产环境不降级，避免把真实的数据服务故障伪装成正常结果。
+        setState(
+          import.meta.env.DEV
+            ? { target: localPlaytestPath, message: '' }
+            : { target: null, message: 'Playtest 数据读取失败' },
+        )
       },
     )
 

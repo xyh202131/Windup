@@ -14,6 +14,7 @@ function geometry(
     y?: number
     fingerprint?: readonly number[]
     contentHash?: string
+    visualDescriptor?: FrameGeometry['visualDescriptor']
     cropped?: boolean
   } = {},
 ): FrameGeometry {
@@ -37,6 +38,7 @@ function geometry(
     coverageRatio: overrides.coverageRatio ?? 0.25,
     fingerprint: overrides.fingerprint,
     contentHash: overrides.contentHash,
+    visualDescriptor: overrides.visualDescriptor,
   }
 }
 
@@ -115,6 +117,7 @@ describe('buildSequenceEvidence', () => {
       dy: 4,
       distance: 5,
       areaDeltaPercent: 20,
+      visual: null,
     })
     expect(evidence.summary).toMatchObject({
       medianStep: 5,
@@ -403,5 +406,68 @@ describe('buildSequenceEvidence', () => {
     expect(
       evidence.findings.filter((finding) => finding.code === 'canvas_size_mismatch'),
     ).toHaveLength(2)
+  })
+
+  it('detects a perceptual near-duplicate even when the RGBA hashes differ', () => {
+    const alpha = Array.from({ length: 32 * 32 }, (_, index) => (index % 3 === 0 ? 1 : 0))
+    const luminance = alpha.map((value) => value * 0.7)
+    const firstDescriptor = {
+      size: 32,
+      alpha,
+      luminance,
+    }
+    const changedAlpha = [...alpha]
+    const changedLuminance = [...luminance]
+    changedAlpha[0] = 0
+    changedLuminance[0] = 0
+    const secondDescriptor = {
+      size: 32,
+      alpha: changedAlpha,
+      luminance: changedLuminance,
+    }
+    const evidence = buildSequenceEvidence(
+      [
+        ready(geometry({ contentHash: 'frame-a', visualDescriptor: firstDescriptor })),
+        ready(geometry({ contentHash: 'frame-b', visualDescriptor: secondDescriptor })),
+      ],
+      'walk',
+    )
+
+    expect(evidence.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'duplicate_frame', frameIndex: 1, severity: 'warning' }),
+      ]),
+    )
+  })
+
+  it('flags a single structural outlier against the robust sequence baseline', () => {
+    const column = (from: number, to: number) => ({
+      size: 32,
+      alpha: Array.from({ length: 32 * 32 }, (_, index) => {
+        const x = index % 32
+        return x >= from && x < to ? 1 : 0
+      }),
+      luminance: Array.from({ length: 32 * 32 }, (_, index) => {
+        const x = index % 32
+        return x >= from && x < to ? 0.7 : 0
+      }),
+    })
+    const stable = column(8, 24)
+    const outlier = column(0, 5)
+    const evidence = buildSequenceEvidence(
+      [
+        ready(geometry({ visualDescriptor: stable, contentHash: 'one' })),
+        ready(geometry({ visualDescriptor: stable, contentHash: 'two' })),
+        ready(geometry({ visualDescriptor: outlier, contentHash: 'three' })),
+      ],
+      'walk',
+    )
+
+    expect(evidence.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'appearance_spike', frameIndex: 2, severity: 'error' }),
+      ]),
+    )
+    expect(evidence.summary.appearanceState).toBe('anomaly')
   })
 })

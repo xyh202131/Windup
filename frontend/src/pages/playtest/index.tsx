@@ -4,8 +4,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type { Character, CharacterApis } from '@/entities/character'
 import type { PlaytestInspectionApis } from '@/entities/playtest-inspection'
 import type { ProjectApis } from '@/entities/project'
+import { buildPlaytestPath } from '@/features/publish'
+
 import { loadPlayableCharacters, toPlayableCharacter } from './assets'
-import { buildPlaytestPath } from './path'
 import { PlaytestWorkbench, type PlaytestAssetOption } from './workbench'
 
 export interface PlaytestPageApis {
@@ -47,8 +48,8 @@ function isNotFoundError(error: unknown): boolean {
 }
 
 /**
- * 正式 Playtest 页面只读取 #70 已定义的 Character 接口。
- * 当接口未配置时，自动回退到内置 demo 角色素材。
+ * 正式 Playtest 页面使用 #70 已定义的 Character 接口读取与管理资产。
+ * 接口未配置时明确报错，不允许正式入口回退到 Demo 数据。
  * 预览、播放和自动分析本身不改资产；只有用户明确触发改名或删除时才写回 Character。
  */
 export function PlaytestPage({ apis }: PlaytestPageProps) {

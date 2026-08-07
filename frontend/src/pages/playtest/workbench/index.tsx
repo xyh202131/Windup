@@ -7,10 +7,15 @@ import type { CanvasBaseline } from './analysis/quality-policy'
 import { ActionSelector, type PlaytestAssetOption } from './action-selector'
 import { Acceptance } from './acceptance'
 import { useFrameReviewEvidence } from './analysis/use-frame-review-evidence'
+import {
+  previewSequenceKey,
+  usePreviewQualityEvidence,
+} from './analysis/use-preview-quality-evidence'
 import { AnimationStage } from './animation-stage'
 import { AuditPanel } from './audit/audit-panel'
 import { reduceAuditSession } from './audit/audit-session'
 import { FrameTimeline } from './frame-timeline'
+import { ExportPanel, type ExportPackageModel } from '@/features/export-package'
 import { Inspector } from './inspector'
 import { createPreviewModel } from './model/create-preview-model'
 import type { PreviewAction } from './model/types'
@@ -42,6 +47,7 @@ const EMPTY_PREVIEW_ACTIONS: readonly PreviewAction[] = []
 const RIGHT_PANELS = [
   ['inspect', '帧检查'],
   ['audit', '问题记录'],
+  ['export', '资产导出'],
 ] as const
 type RightPanel = (typeof RIGHT_PANELS)[number][0]
 
@@ -99,6 +105,10 @@ export function PlaytestWorkbench({
     undefined,
     expectedCanvas,
   )
+  const exportEvidence = usePreviewQualityEvidence(
+    preview?.actions ?? EMPTY_PREVIEW_ACTIONS,
+    expectedCanvas,
+  )
   const inspectionTarget = useMemo(
     () =>
       playback.action === null
@@ -122,6 +132,65 @@ export function PlaytestWorkbench({
     (finding) => finding.severity === 'error',
   ).length
   const qualityIssueCount = automaticErrorCount + manualIssues.length
+  const exportResult = useMemo<{
+    model: ExportPackageModel | null
+    blockerCount: number
+    unavailableReason: string | null
+  }>(() => {
+    if (preview === null) return { model: null, blockerCount: 0, unavailableReason: null }
+    if (exportEvidence.status !== 'ready') {
+      return {
+        model: null,
+        blockerCount: 0,
+        unavailableReason: '正在检查全部动作，完成前不会放行导出。',
+      }
+    }
+    if (
+      preview.actions.some((action) =>
+        action.sequences.some((sequence) => sequence.expectedFrameCount == null),
+      )
+    ) {
+      return {
+        model: null,
+        blockerCount: 0,
+        unavailableReason: '缺少后端声明的完整帧数，无法确认动作是否缺帧。',
+      }
+    }
+
+    const canvas = expectedCanvas ?? { width: 256, height: 256 }
+    let failedSequenceCount = 0
+    const model: ExportPackageModel = {
+      ...preview,
+      canvas,
+      source: null,
+      actions: preview.actions.map((action) => ({
+        ...action,
+        sequences: action.sequences.map((sequence) => {
+          const evidence = exportEvidence.evidenceBySequence.get(
+            previewSequenceKey(action, sequence),
+          )
+          const failed =
+            evidence === undefined ||
+            evidence.findings.some((finding) => finding.severity === 'error') ||
+            sequence.frames.length !== sequence.expectedFrameCount
+          if (failed) failedSequenceCount += 1
+          return {
+            ...sequence,
+            expectedFrameCount: sequence.expectedFrameCount!,
+            loop: action.loop ?? false,
+            anchor: { x: 0.5, y: 1 },
+            footY: canvas.height,
+            qualityStatus: failed ? ('failed' as const) : ('passed' as const),
+          }
+        }),
+      })),
+    }
+    return {
+      model,
+      blockerCount: failedSequenceCount + manualIssues.length,
+      unavailableReason: null,
+    }
+  }, [expectedCanvas, exportEvidence, manualIssues.length, preview])
 
   const movePanelFocus = (event: KeyboardEvent<HTMLButtonElement>, current: RightPanel) => {
     const currentIndex = RIGHT_PANELS.findIndex(([value]) => value === current)
@@ -365,7 +434,7 @@ export function PlaytestWorkbench({
             <div
               role="tablist"
               aria-label="Playtest 工具"
-              className="grid grid-cols-2 gap-1 rounded-md bg-[#e7ebe7] p-1"
+              className="grid grid-cols-3 gap-1 rounded-md bg-[#e7ebe7] p-1"
             >
               {RIGHT_PANELS.map(([value, label]) => (
                 <button
@@ -424,6 +493,24 @@ export function PlaytestWorkbench({
                 }
                 onRemove={(id) => dispatchAudit({ type: 'remove', id })}
               />
+            </div>
+            <div
+              id="playtest-tool-panel-export"
+              role="tabpanel"
+              aria-labelledby="playtest-tool-tab-export"
+              hidden={activeRightPanel !== 'export'}
+              className="min-h-0 flex-1 overflow-y-auto"
+            >
+              {exportResult.model ? (
+                <ExportPanel
+                  model={exportResult.model}
+                  qualityIssueCount={exportResult.blockerCount}
+                />
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-300 p-4 text-xs text-slate-600">
+                  {exportResult.unavailableReason ?? '暂时不能生成资产包。'}
+                </p>
+              )}
             </div>
             <Acceptance
               inspectionStatus={inspection.status}

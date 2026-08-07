@@ -1,6 +1,15 @@
-import type { Action, ActionType, Character, CharacterApis, Frame, Outfit } from '.'
+import type {
+  Action,
+  ActionType,
+  Character,
+  CharacterApis,
+  CreateCharacterInput,
+  Frame,
+  Outfit,
+} from '.'
 
-import { del, get, getPage, patch } from '@/shared/api'
+import { del, get, getPage, patch, post } from '@/shared/api'
+import type { Paged, PageQuery } from '@/shared/pagination'
 
 /* ─── 后端 DTO ─── */
 
@@ -37,10 +46,13 @@ interface BackendCharacterData {
 interface BackendCharacter {
   id: number
   project_id: number
+  name?: string | null
   description: string | null
   reference_image_url: string | null
   character_data: BackendCharacterData
   status: number
+  create_at?: string
+  update_at?: string
 }
 
 /* ─── 映射 ─── */
@@ -64,6 +76,7 @@ function toAction(raw: BackendAction, outfitId: string): Action {
     id: raw.id,
     outfitId,
     name: raw.name,
+    expectedFrameCount: raw.frame_count,
     loop: raw.loop,
     kind: 'custom', // 后端不区分 preset/custom
     type: toActionType(raw.type),
@@ -78,6 +91,7 @@ function toOutfit(raw: BackendOutfit, characterId: string): Outfit {
     id: raw.id,
     characterId,
     name: raw.name,
+    description: raw.description,
     candidateCharacterTemplates: [], // 后端 character_data 不含候选
     characterTemplateUrl: raw.preview_url,
     baseFrames: [],
@@ -90,18 +104,31 @@ function toCharacter(raw: BackendCharacter): Character {
   return {
     id,
     projectId: String(raw.project_id),
-    createdAt: '', // 后端列表不返回时间戳
-    updatedAt: '',
+    name: raw.name ?? null,
+    description: raw.description,
+    referenceImageUrl: raw.reference_image_url,
+    dataVersion: raw.character_data?.version ?? 1,
+    status: raw.status,
+    createdAt: raw.create_at ?? '',
+    updatedAt: raw.update_at ?? '',
     outfits: (raw.character_data?.outfits ?? []).map((o) => toOutfit(o, id)),
   }
 }
 
 /* ─── 适配器 ─── */
 
-export function createCharacterApis(): Pick<
-  CharacterApis,
-  'get' | 'listByProject' | 'update' | 'remove'
-> {
+export function createCharacterApis(): CharacterApis {
+  async function listPageByProject(
+    projectId: string,
+    query: PageQuery = {},
+  ): Promise<Paged<Character>> {
+    const params = new URLSearchParams({ project_id: projectId })
+    if (query.page) params.set('page', String(query.page))
+    if (query.pageSize) params.set('page_size', String(query.pageSize))
+    const page = await getPage<BackendCharacter>(`/characters?${params}`)
+    return { ...page, items: page.items.map(toCharacter) }
+  }
+
   return {
     async get(id: string): Promise<Character> {
       const raw = await get<BackendCharacter>(`/characters/${id}`)
@@ -109,44 +136,40 @@ export function createCharacterApis(): Pick<
     },
 
     async listByProject(projectId: string): Promise<Character[]> {
-      const encodedProjectId = encodeURIComponent(projectId)
-      const pageSize = 100
-      const firstPage = await getPage<BackendCharacter>(
-        `/characters?project_id=${encodedProjectId}&page=1&page_size=${pageSize}`,
-      )
-
-      // page_size=0 是后端 ListResponse 的“已返回全量”标记，不需要继续翻页。
-      // 分页响应则按 total 继续读取，保证 Playtest 的角色切换器不会只显示前 100 个。
-      const all = [...firstPage.items]
-      if (firstPage.pageSize === 0) return all.map(toCharacter)
-
-      let currentPage = firstPage.page
-      while (all.length < firstPage.total) {
-        currentPage += 1
-        const nextPage = await getPage<BackendCharacter>(
-          `/characters?project_id=${encodedProjectId}&page=${currentPage}&page_size=${pageSize}`,
-        )
-        if (nextPage.page !== currentPage) {
-          throw new Error(`角色分页响应页码不一致：请求 ${currentPage}，返回 ${nextPage.page}`)
-        }
-        if (nextPage.items.length === 0) {
-          throw new Error(`角色分页在读取完 total 前返回空页：${all.length}/${firstPage.total}`)
-        }
-        all.push(...nextPage.items)
-        if (nextPage.pageSize === 0) break
+      const items: Character[] = []
+      let pageNumber = 1
+      for (;;) {
+        const page = await listPageByProject(projectId, { page: pageNumber, pageSize: 100 })
+        items.push(...page.items)
+        if (items.length >= page.total || page.items.length === 0) break
+        pageNumber += 1
       }
-      return all.map(toCharacter)
+      return items
+    },
+
+    listPageByProject,
+
+    async create(input: CreateCharacterInput): Promise<Character> {
+      const raw = await post<BackendCharacter>('/characters', {
+        project_id: Number(input.projectId),
+        name: input.name ?? null,
+        description: input.description,
+        reference_image_url: input.referenceImageUrl ?? null,
+      })
+      return toCharacter(raw)
     },
 
     async update(character: Character): Promise<Character> {
       const payload = {
-        project_id: Number(character.projectId),
+        name: character.name ?? null,
+        description: character.description ?? null,
+        reference_image_url: character.referenceImageUrl ?? null,
         character_data: {
-          version: 1,
+          version: character.dataVersion ?? 1,
           outfits: character.outfits.map((outfit) => ({
             id: outfit.id,
             name: outfit.name,
-            description: null,
+            description: outfit.description ?? null,
             preview_url: outfit.characterTemplateUrl,
             actions: outfit.actions.map((action) => ({
               id: action.id,
@@ -154,12 +177,11 @@ export function createCharacterApis(): Pick<
               name: action.name,
               loop: action.loop ?? false,
               fps: action.fps,
-              frame_count: action.frames.length,
+              frame_count: action.expectedFrameCount ?? action.frames.length,
               frames: action.frames.map((frame, index) => ({
                 index,
                 image_url: frame.imageUrl,
                 duration_ms: frame.durationMs,
-                root_motion: frame.rootMotion,
               })),
             })),
           })),

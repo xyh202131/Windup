@@ -19,6 +19,8 @@ export interface PreviewFrame {
 
 export interface PreviewSequence {
   direction: PlaytestDirection
+  /** 后端声明的完整帧数；null/undefined 表示旧数据没有提供，不能据此放行导出。 */
+  expectedFrameCount?: number | null
   frames: readonly PreviewFrame[]
 }
 
@@ -27,6 +29,7 @@ export interface PreviewAction {
   name: string
   type: PlaytestActionType
   fps: number
+  loop?: boolean
   sequences: readonly PreviewSequence[]
 }
 

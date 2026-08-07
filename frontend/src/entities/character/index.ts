@@ -61,6 +61,11 @@ export interface Action {
   id: string
   outfitId: Outfit['id']
   name: string
+  /**
+   * 生成端声明的完整帧数。旧的纯前端数据可以暂时缺省，但正式后端数据必须保留该值，
+   * 否则 Playtest 不能判断收到的 frames 是否完整。
+   */
+  expectedFrameCount?: number
   /** 是否在播放到末帧后从首帧继续；整树更新时必须原样保存。 */
   loop?: boolean
   /** 定义来源方式；与 type 正交，不用于推断动作业务语义。 */
@@ -94,6 +99,8 @@ export interface Outfit {
   id: string
   characterId: string
   name: string
+  /** 造型说明来自 character_data；旧资产没有时为 null。 */
+  description?: string | null
   /** 母版生成阶段返回的候选；生成完成前可以为空数组。 */
   candidateCharacterTemplates: CharacterTemplateCandidate[]
   /** 用户从候选图中选定的角色母版 URL；尚未选定时为 null。 */
@@ -108,11 +115,20 @@ export interface Outfit {
  * 项目下的角色资产；造型拥有各自的母版和动作帧。
  *
  * 这棵树只承载已导出到资产库的内容，因此其中的动作一律是已确认的，不带生成过程状态。
- * 工作流运行期间的造型、动作和帧活在 WorkflowRun 的步骤里，直到用户确认导出才整体写入。
+ * 工作流运行期间的造型、动作和帧活在 WorkflowRun 的节点里，直到用户确认导出才整体写入。
  */
 export interface Character {
   id: string
   projectId: string
+  /** 当前后端返回时用于资产库展示；旧记录没有时为空。 */
+  name?: string | null
+  /** 角色描述与参考图属于 Character 顶层后端字段。 */
+  description?: string | null
+  referenceImageUrl?: string | null
+  /** character_data.version，整棵更新时原样带回。 */
+  dataVersion?: number
+  /** 后端记录状态；当前 1 表示正常。 */
+  status?: number
   /** 角色的全部独立造型；MVP 页面至少保留这一层，即使当前只有一个成员。 */
   outfits: Outfit[]
   createdAt: string
@@ -122,6 +138,7 @@ export interface Character {
 /** 创建角色并发起母版生成所需的入参。 */
 export interface CreateCharacterInput {
   projectId: string
+  name?: string | null
   /** 交给模型生成母版。 */
   description: string
   referenceImageUrl?: string | null
@@ -134,6 +151,10 @@ export interface CreateCharacterInput {
 export interface CharacterApis {
   get(id: Character['id']): Promise<Character>
   listByProject(projectId: string): Promise<Character[]>
+  listPageByProject?(
+    projectId: string,
+    query?: import('@/shared/pagination').PageQuery,
+  ): Promise<import('@/shared/pagination').Paged<Character>>
   create(input: CreateCharacterInput): Promise<Character>
   update(character: Character): Promise<Character>
   remove(id: Character['id']): Promise<void>

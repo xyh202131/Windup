@@ -29,6 +29,7 @@ const character: Character = {
           id: 'walk',
           outfitId: 'outfit-1',
           name: 'Walk',
+          expectedFrameCount: 2,
           kind: 'preset',
           type: 'walk',
           fps: 8,
@@ -50,6 +51,7 @@ const character: Character = {
           id: 'jump',
           outfitId: 'outfit-1',
           name: 'Jump',
+          expectedFrameCount: 1,
           kind: 'preset',
           type: 'jump',
           fps: 8,
@@ -66,6 +68,7 @@ const character: Character = {
           id: 'crouch',
           outfitId: 'outfit-1',
           name: 'Crouch',
+          expectedFrameCount: 1,
           kind: 'custom',
           type: 'custom',
           fps: 8,
@@ -204,9 +207,48 @@ describe('PlaytestWorkbench on the PR #70 character contract', () => {
     expect((screen.getByRole('button', { name: '核验通过' }) as HTMLButtonElement).disabled).toBe(
       true,
     )
-    expect((screen.getByRole('button', { name: '发现问题' }) as HTMLButtonElement).disabled).toBe(
-      false,
+  })
+
+  it('checks every action before enabling export and blocks a failed unseen action', async () => {
+    readImageGeometry.mockImplementation(async (imageUrl: string) =>
+      imageUrl.includes('jump')
+        ? { status: 'unavailable', reason: '图片加载失败' }
+        : measuredGeometry(imageUrl),
     )
+    render(<PlaytestWorkbench character={character} outfitId="outfit-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: '打开检查工具' }))
+    fireEvent.click(screen.getByRole('tab', { name: '资产导出' }))
+
+    await waitFor(() =>
+      expect(
+        readImageGeometry.mock.calls.some(([imageUrl]) => String(imageUrl).includes('jump-01')),
+      ).toBe(true),
+    )
+    expect(
+      (screen.getByRole('button', { name: '导出游戏资产包' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('blocks export when the backend-declared frame count is larger than the received frames', async () => {
+    const incompleteCharacter: Character = {
+      ...character,
+      outfits: character.outfits.map((outfit) => ({
+        ...outfit,
+        actions: outfit.actions.map((action) =>
+          action.id === 'walk'
+            ? { ...action, expectedFrameCount: action.frames.length + 1 }
+            : action,
+        ),
+      })),
+    }
+    render(<PlaytestWorkbench character={incompleteCharacter} outfitId="outfit-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: '打开检查工具' }))
+    fireEvent.click(screen.getByRole('tab', { name: '资产导出' }))
+
+    const exportButton = await screen.findByRole('button', { name: '导出游戏资产包' })
+    expect((exportButton as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('reports a missing outfit instead of falling back to another asset', () => {
@@ -215,7 +257,7 @@ describe('PlaytestWorkbench on the PR #70 character contract', () => {
     expect(screen.getByText('找不到指定造型，无法构造只读预览。')).toBeTruthy()
   })
 
-  it('keeps inspection and issue records in the Playtest workbench', () => {
+  it('keeps inspect, audit, and export in the same workbench', async () => {
     render(<PlaytestWorkbench character={character} outfitId="outfit-1" />)
 
     expect(screen.queryByRole('tab', { name: '帧检查' })).toBeNull()
@@ -223,7 +265,8 @@ describe('PlaytestWorkbench on the PR #70 character contract', () => {
     expect(screen.getByRole('tab', { name: '帧检查' })).toBeTruthy()
     fireEvent.click(screen.getByRole('tab', { name: '问题记录' }))
     expect(screen.getByRole('tabpanel', { name: '问题记录' })).toBeTruthy()
-    expect(screen.queryByRole('tab', { name: '资产导出' })).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: '资产导出' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '导出游戏资产包' })).toBeTruthy())
   })
 
   it('delegates adding an action for the current character', () => {

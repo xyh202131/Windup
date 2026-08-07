@@ -1,3 +1,5 @@
+import { createVisualDescriptor, type VisualDescriptor } from './visual-similarity'
+
 export const ALPHA_THRESHOLD = 24
 const MIN_COMPONENT_PIXELS = 4
 const RELATIVE_COMPONENT_RATIO = 0.002
@@ -28,6 +30,8 @@ export interface FrameGeometry {
   fingerprint?: readonly number[]
   /** Exact RGBA content hash used to identify genuinely duplicated frames. */
   contentHash?: string
+  /** Normalized foreground pixels used by structural and silhouette comparisons. */
+  visualDescriptor?: VisualDescriptor
 }
 
 function hashPixels(data: Uint8ClampedArray): string {
@@ -193,5 +197,11 @@ export function measureFrameGeometry(pixels: FramePixelData): FrameGeometry | nu
       height: subjectHeight,
     }),
     contentHash: hashPixels(data),
+    visualDescriptor: createVisualDescriptor(data, width, subjectPixels, {
+      left,
+      top,
+      width: subjectWidth,
+      height: subjectHeight,
+    }),
   }
 }

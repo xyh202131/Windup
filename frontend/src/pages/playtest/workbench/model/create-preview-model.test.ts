@@ -24,6 +24,7 @@ const character: Character = {
           id: 'walk',
           outfitId: 'outfit-1',
           name: 'Walk',
+          expectedFrameCount: 8,
           kind: 'preset',
           type: 'walk',
           fps: 5,
@@ -83,6 +84,7 @@ describe('createPreviewModel', () => {
     expect(result.model.actions[0].sequences.map((sequence) => sequence.direction)).toEqual([
       'default',
     ])
+    expect(result.model.actions[0].sequences[0].expectedFrameCount).toBe(8)
     expect(result.model).toMatchObject({
       characterId: 'character-1',
       characterName: 'character-1',

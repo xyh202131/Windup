@@ -55,7 +55,13 @@ function createPreviewAction(action: Action): PreviewAction {
     if (frame.rootMotion !== null) previousAbsoluteRootMotion = frame.rootMotion
     return previewFrame
   })
-  const sequences: readonly PreviewSequence[] = [{ direction: 'default', frames }]
+  const sequences: readonly PreviewSequence[] = [
+    {
+      direction: 'default',
+      expectedFrameCount: action.expectedFrameCount ?? null,
+      frames,
+    },
+  ]
 
   return {
     id: action.id,
@@ -66,6 +72,7 @@ function createPreviewAction(action: Action): PreviewAction {
         ? 'crouch'
         : action.type,
     fps: action.fps,
+    loop: action.loop ?? false,
     sequences,
   }
 }

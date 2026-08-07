@@ -12,12 +12,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from windup_framework.config.database import settings as db_settings
 
-engine = create_engine(
-    db_settings.url,
-    pool_size=db_settings.pool_size,
-    max_overflow=db_settings.max_overflow,
-    pool_pre_ping=db_settings.pool_pre_ping,
-)
+database_url = db_settings.url
+if database_url.startswith("sqlite:"):
+    engine = create_engine(
+        database_url,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_engine(
+        database_url,
+        pool_size=db_settings.pool_size,
+        max_overflow=db_settings.max_overflow,
+        pool_pre_ping=db_settings.pool_pre_ping,
+    )
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
