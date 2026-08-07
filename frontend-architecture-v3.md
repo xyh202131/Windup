@@ -1,6 +1,6 @@
 # Windup 前端架构
 
-本文记录当前前端的模块划分与依赖规则。2026-07-30 按当日评审意见重写为只提交模块边界与接口；实现按模块拆成后续 PR 陆续落地，首页是第一个。
+本文记录当前前端的模块划分、依赖规则和已经落地的首个工作流纵切。
 
 ---
 
@@ -41,8 +41,6 @@ pages -> features -> entities -> shared
 
 `app` 只做启动和路由，不构造服务、不向下注入。
 
-外壳套在哪些页面上也是路由决策：`AppShellRoute` 写在 `app.tsx` 的路由表里，谁在里面谁就有顶栏。首页、快速开始、Workflow Editor 与 Playtest 使用全局外壳；`/projects/:projectId/*` 是独立项目工作区，由 `ProjectDetailPage` 提供项目级导航，不重复套全局顶栏。外壳组件自身不读 pathname，不判断自己该不该出现；顶栏内部读 pathname 只为高亮当前项。外壳也不统一夹居中容器，宽度与留白由页面自己决定。
-
 ### 依赖规则
 
 1. 只能向下依赖，不允许反向。
@@ -58,6 +56,7 @@ pages -> features -> entities -> shared
 
 ```text
 ProjectApis  CharacterApis  ActionTemplateApis  GenerationApis
+TaskApis
 ```
 
 **不使用 `Repository` / `Port` / `Adapter` 这些叫法**，也不做接口与实现的分离——实现跟着接口放在同一个模块里。
@@ -70,7 +69,8 @@ ProjectApis  CharacterApis  ActionTemplateApis  GenerationApis
 
 `features/workflow-controller` 是快速开始与手动工作流共用的推进边界，不含界面。
 
-Controller 围绕同一份 WorkflowRun 提供推进、更新、重启和中断。这些操作依赖同一份步骤数据，不拆成互不共享状态的独立模块。
+Controller 围绕同一份 WorkflowRun 提供创建、读取、订阅、当前步骤更新、推进、
+任务恢复、结果写回和中断。这些操作依赖同一份步骤数据，不拆成互不共享状态的独立模块。
 
 步骤顺序固定八步：
 
@@ -78,26 +78,38 @@ Controller 围绕同一份 WorkflowRun 提供推进、更新、重启和中断�
 角色资料 → 角色图 → 候选选择 → 动作资料 → 首帧 → 完整动画 → 审核 → 导出
 ```
 
-**步骤怎么走、运行状态如何保存都由前端决定。** 后端不参与 WorkflowRun，只接收各节点发起的生成请求，并在最终确认时持久化角色与动作资产。
+**步骤怎么走、运行状态如何保存都由前端决定。** 后端不参与 WorkflowRun，
+只接收各节点发起的生成请求，并在最终确认时持久化角色与动作资产。固定八步是当前
+产品流程，不是为了通用编排而写的可配置工作流。
 
-从历史步骤重开会追加一个新 Revision，旧 Revision 保留为只读历史，不会被改写成失败或完成。
+当前存储版本只支持一个 Revision。从历史步骤重开尚未进入产品定义，Controller
+不提前暴露该操作；实现时必须同步升级本地存储版本和迁移规则。
 
-快速开始与手动模式共用同一份推进逻辑，区别只是前者连续调用、后者一次一步。隐藏步骤不等于跳过步骤——门禁写在流程模型里，不在界面里。
+快速开始与手动模式将共用同一份推进逻辑，但连续自动推进属于 Quick Start 页面接入范围，
+当前 Controller 只实现一次推进一个步骤。
+
+Controller 的提交锁和任务订阅属于实例状态。页面接入时必须复用同一个 Feature 实例，
+不能在组件渲染或路由切换时重复创建。
 
 ---
 
 ## 5. 当前实现范围
 
-- `ProjectApis` 与 `CharacterApis` 实现 PR #75 的 Project、Character HTTP 契约；snake_case 只存在于各实体模块内部的 DTO 映射。
-- 项目中心、项目工作区、角色资产库、角色详情按 `Project → Character → Outfit → Action → Frame` 层级读取真实接口。
-- 测试通过 HTTP 替身返回契约数据；本模块的生产代码不包含 Mock API、演示实体或 livedemo 资产。
+- `WorkflowRun` 的内存状态、版本化 localStorage 镜像和刷新校验
+- `角色资料 → 角色图生成 → 候选选择` 的 Controller 纵切
+- Store、Controller 和纵向流程测试
 
-本轮不包含新建项目流程、Workflow Editor 实现、Action Template 后端能力、导出接线、图片上传与登录流程。穿戴道具不作为独立资产层暴露。
+页面、Workflow Editor、Quick Start 自动推进、后五步和真实后端适配器仍未实现。
 
-首页仍不依赖 `entities` 与 `features`，两张入口卡片只做路由跳转。首屏三段制作路径是 `WORKFLOW_STEP_ORDER` 八步的粗粒度概括，改流程时要一并改。
+### 恢复边界
+
+- 已取得 `taskId`：刷新后先查询任务当前状态，未结束才重新订阅。
+- 请求已经发出但尚未取得 `taskId`：后端没有幂等键或按请求标识查询的能力，
+  前端将本地 Run 标为失败，不自动重提，避免静默创建重复任务。
+- localStorage 写入失败时当前会话继续使用内存快照；页面提示与重新持久化策略在 UI 接入时补充。
 
 ---
 
 ## 6. 未与后端对齐的部分
 
-PR #75 尚未合并，因此本实现要求先合并该后端 PR；契约明细与仍需后端处理的问题见 `frontend/API_CONTRACT.md`。
+明细见 `frontend/API_CONTRACT.md`。

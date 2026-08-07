@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router'
-
-import { AppRoutes } from '@/app'
+import { renderAuthenticatedAppRoute } from '@/test/authenticated-app-routes'
 import { createProjectAssetsBackend } from '@/test/project-assets-backend'
 
 afterEach(() => {
@@ -18,11 +16,7 @@ describe('ProjectDetailPage', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://api.windup.test')
     vi.stubGlobal('fetch', backend.fetch)
 
-    const { container } = render(
-      <MemoryRouter initialEntries={['/projects/42/assets/51']}>
-        <AppRoutes />
-      </MemoryRouter>,
-    )
+    const { container } = renderAuthenticatedAppRoute('/projects/42/assets/51')
 
     expect(await screen.findByRole('heading', { name: '点灯人 · MVP' })).toBeTruthy()
     expect(screen.getByText('横版视角')).toBeTruthy()

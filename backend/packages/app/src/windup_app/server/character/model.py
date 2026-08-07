@@ -60,6 +60,8 @@ class Character(Base):
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
+    workflow_run_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     reference_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -91,12 +93,20 @@ class Character(Base):
 # ── character_data Pydantic 模型 ──────────────────────────────────────────────
 
 
+class CharacterRootMotion(BaseModel):
+    """单帧相对动作首帧的根位移。"""
+
+    dx: float
+    dy: float
+
+
 class CharacterFrame(BaseModel):
     """动作帧。"""
 
     index: int = Field(ge=0, description="帧序号")
     image_url: str = Field(..., description="帧图片 URL")
     duration_ms: int | None = Field(default=None, gt=0, description="帧时长(毫秒)")
+    root_motion: CharacterRootMotion | None = Field(default=None, description="根位移增量")
 
 
 class CharacterAction(BaseModel):
