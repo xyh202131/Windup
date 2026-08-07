@@ -1,69 +1,92 @@
-/** entities 唯一公开入口。外部不得绕过本文件访问内部文件。 */
+/**
+ * entities 唯一公开入口。外部不得绕过本文件访问内部文件。
+ * 外部只从这里使用实体契约与已经落地的实体能力。
+ */
+
+/* 用户 —— 认证态与账户资料。 */
+export { createUserApis } from './user/api'
+export type { CreateUserApisOptions } from './user/api'
+export type { AuthTokens, User, UserApis } from './user'
 
 /* 项目 —— 全局约束：视角、朝向、精灵尺寸、画风 */
-export { CHARACTER_PERSPECTIVE, DIRECTIONAL_MOVEMENT } from './project'
-export { projectApis } from './project'
+export { CHARACTER_PERSPECTIVE, DIRECTIONAL_MOVEMENT, SPRITE_SIZES } from './project'
+export { createProjectApis } from './project/api'
 export type {
   CharacterPerspective,
   CreateProjectInput,
   DirectionalMovement,
   Project,
   ProjectApis,
-  ProjectPageQuery,
 } from './project'
 
 /* 角色 —— 资产本体；造型、动作、帧都在这棵树里 */
 export type {
   Action,
+  ActionKind,
   ActionType,
+  BaseFrame,
   Character,
   CharacterApis,
+  CharacterTemplateCandidate,
+  ConfirmCharacterTemplateInput,
   CreateCharacterInput,
   Frame,
+  FrameRootMotion,
   Outfit,
 } from './character'
-export { characterApis } from './character'
-
-/* 动作模板 —— 能跨角色复用的配方 */
-export type { ActionTemplate, ActionTemplateApis } from './action-template'
+export { createCharacterApis } from './character/api'
 
 /* 生成 —— 业务数据，不是「调用生成能力」 */
+export { CHARACTER_ACTION_FRAME_COUNT } from './generation'
+export { createGenerationApis } from './generation/api'
 export type {
-  CharacterTemplateGenerationInput,
-  CharacterTemplateGenerationResult,
-  CompleteAnimationGenerationInput,
-  CompleteAnimationGenerationResult,
-  FirstFrameGenerationInput,
-  FirstFrameGenerationResult,
-  GeneratedImage,
+  CharacterActionFrame,
+  CharacterActionGenerationInput,
+  CharacterActionOutput,
+  CharacterImageGenerationInput,
+  CharacterImageOutput,
   Generation,
   GenerationApis,
   GenerationEvent,
   GenerationInput,
   GenerationResult,
   GenerationResultFor,
+  GenerationTaskStatus,
   GenerationType,
-  TaskStatus,
 } from './generation'
 
 /* 媒体引用 —— 不承诺 URL 或后端 Media ID 的具体表示 */
-export type { MediaReference } from './media'
+export { createMediaApis } from './media/api'
+export type { MediaApis, MediaCategory, MediaReference } from './media'
 
-/* 工作流 —— 前端管理节点，后端只持久化完整 nodes 文档 */
-export { workflowRunApis } from './workflow-run'
+/* Playtest 核验 —— 每个动作当前最新的核验结论，不形成历史版本 */
+export { createPlaytestInspectionApis } from './playtest-inspection/api'
 export type {
-  ActionWorkflowNode,
-  CharacterWorkflowNode,
+  PlaytestInspection,
+  PlaytestInspectionApis,
+  PlaytestInspectionStatus,
+  PlaytestInspectionTarget,
+  SavePlaytestInspectionInput,
+} from './playtest-inspection'
+
+/* 工作流 —— 节点与运行状态都由前端管理 */
+export { createWorkflowRunStore, WORKFLOW_NODE_ORDER } from './workflow-run'
+export type {
+  CharacterSetupNodeInput,
+  CharacterSetupWorkflowNode,
+  CharacterTemplateWorkflowNode,
+  ActionFirstFrameWorkflowNode,
+  ActionFullFrameWorkflowNode,
   CreateWorkflowRunInput,
-  WorkflowActionInput,
-  WorkflowCharacterInput,
-  WorkflowGenerationRef,
-  WorkflowGenerationRole,
+  ExportStatus,
+  GenerationStatus,
   WorkflowNode,
-  WorkflowNodePhase,
   WorkflowNodeStatus,
   WorkflowNodeType,
-  WorkflowRunApis,
-  WorkflowRunStorageStatus,
   WorkflowRun,
+  WorkflowRunStore,
+  WorkflowRunPurpose,
+  WorkflowRunStatus,
+  WorkflowRevision,
+  CreateWorkflowRunStoreOptions,
 } from './workflow-run'
