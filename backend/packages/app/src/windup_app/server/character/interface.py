@@ -34,12 +34,20 @@ class CharacterService(ABC):
 
     @abstractmethod
     def list_characters(
-        self, session: Session, *, project_id: int, page: int, page_size: int,
+        self,
+        session: Session,
+        *,
+        project_id: int,
+        page: int,
+        page_size: int,
+        status: int | None = None,
     ) -> tuple[list[Character], int]:
         """分页查询项目下的角色列表，返回 (当前页数据, 总数)。"""
 
     @abstractmethod
-    def update_character(self, session: Session, character_id: int, **fields) -> Character | None:
+    def update_character(
+        self, session: Session, character_id: int, **fields
+    ) -> Character | None:
         """更新角色描述、参考图或 character_data 等字段。
 
         返回更新后的角色；不存在时返回 ``None``。

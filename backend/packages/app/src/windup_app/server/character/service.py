@@ -12,13 +12,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from windup_app.server.character.interface import CharacterService
-from windup_app.server.character.model import Character
+from windup_app.server.character.model import Character, character_status
 
 
 class SqlAlchemyCharacterService(CharacterService):
     """基于 SQLAlchemy session 的角色 CRUD 实现。"""
 
     def create_character(self, session: Session, **fields) -> Character:
+        fields["status"] = character_status(fields.get("character_data", {}))
         character = Character(**fields)
         session.add(character)
         session.flush()
@@ -28,16 +29,21 @@ class SqlAlchemyCharacterService(CharacterService):
         return session.get(Character, character_id)
 
     def list_characters(
-        self, session: Session, *, project_id: int, page: int, page_size: int,
+        self,
+        session: Session,
+        *,
+        project_id: int,
+        page: int,
+        page_size: int,
+        status: int | None = None,
     ) -> tuple[list[Character], int]:
-        count_stmt = (
-            select(func.count())
-            .select_from(Character)
-            .where(Character.project_id == project_id)
-        )
+        filters = [Character.project_id == project_id]
+        if status is not None:
+            filters.append(Character.status == status)
+        count_stmt = select(func.count()).select_from(Character).where(*filters)
         stmt = (
             select(Character)
-            .where(Character.project_id == project_id)
+            .where(*filters)
             .order_by(Character.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -47,11 +53,16 @@ class SqlAlchemyCharacterService(CharacterService):
         return items, total
 
     def update_character(
-        self, session: Session, character_id: int, **fields,
+        self,
+        session: Session,
+        character_id: int,
+        **fields,
     ) -> Character | None:
         character = session.get(Character, character_id)
         if character is None:
             return None
+        if "character_data" in fields:
+            fields["status"] = character_status(fields["character_data"])
         for key, value in fields.items():
             setattr(character, key, value)
         session.flush()

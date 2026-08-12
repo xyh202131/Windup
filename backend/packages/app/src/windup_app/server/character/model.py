@@ -42,6 +42,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from windup_framework.db import Base
 
 
+CHARACTER_STATUS_DRAFT = 0
+CHARACTER_STATUS_PUBLISHED = 1
+
+
+def character_status(character_data: dict) -> int:
+    """根据是否存在真实动作帧计算角色发布状态。"""
+    for outfit in character_data.get("outfits", []):
+        for action in outfit.get("actions", []):
+            if action.get("frames"):
+                return CHARACTER_STATUS_PUBLISHED
+    return CHARACTER_STATUS_DRAFT
+
+
 # ── ORM ──────────────────────────────────────────────────────────────────────
 
 
@@ -76,7 +89,7 @@ class Character(Base):
     )
 
     status: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, default=1
+        SmallInteger, nullable=False, default=CHARACTER_STATUS_DRAFT
     )
 
     create_at: Mapped[datetime] = mapped_column(
@@ -122,7 +135,9 @@ class CharacterOutfit(BaseModel):
     name: str = Field(..., description="造型名称")
     description: str | None = Field(default=None, description="造型描述")
     preview_url: str | None = Field(default=None, description="造型预览图 URL")
-    actions: list[CharacterAction] = Field(default_factory=list, description="该造型下的动作列表")
+    actions: list[CharacterAction] = Field(
+        default_factory=list, description="该造型下的动作列表"
+    )
 
 
 class CharacterData(BaseModel):

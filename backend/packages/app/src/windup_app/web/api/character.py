@@ -12,7 +12,12 @@ from windup_common.result import ListResponse, Response
 from windup_framework.config.storage import settings as storage_settings
 from windup_framework.db import get_session
 
-from windup_app.server.character.model import Character, CharacterData
+from windup_app.server.character.model import (
+    CHARACTER_STATUS_DRAFT,
+    CHARACTER_STATUS_PUBLISHED,
+    Character,
+    CharacterData,
+)
 from windup_app.server.character.service import service as character_service
 from windup_app.server.media.service import service as media_service
 from windup_app.server.project.model import Project
@@ -74,19 +79,19 @@ def _extract_object_keys(character: Character) -> list[str]:
     # 参考图
     url = character.reference_image_url
     if url and url.startswith(prefix):
-        keys.append(url[len(prefix):])
+        keys.append(url[len(prefix) :])
 
     # character_data 内的 URL
     data = character.character_data or {}
     for outfit in data.get("outfits", []):
         url = outfit.get("preview_url")
         if url and url.startswith(prefix):
-            keys.append(url[len(prefix):])
+            keys.append(url[len(prefix) :])
         for action in outfit.get("actions", []):
             for frame in action.get("frames", []):
                 url = frame.get("image_url")
                 if url and url.startswith(prefix):
-                    keys.append(url[len(prefix):])
+                    keys.append(url[len(prefix) :])
 
     return keys
 
@@ -95,7 +100,9 @@ def _extract_object_keys(character: Character) -> list[str]:
 
 
 def _get_project_or_raise(
-    session: Session, project_id: int, user_id: int,
+    session: Session,
+    project_id: int,
+    user_id: int,
 ) -> Project:
     """校验项目存在且属于当前用户，否则抛 BizException。"""
     project = session.get(Project, project_id)
@@ -105,7 +112,9 @@ def _get_project_or_raise(
 
 
 def _get_character_with_auth(
-    session: Session, character_id: int, user_id: int,
+    session: Session,
+    character_id: int,
+    user_id: int,
 ) -> Character:
     """获取角色并校验其所属项目属于当前用户。
 
@@ -149,12 +158,21 @@ def list_characters(
     request: Request = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    status: int | None = Query(
+        default=None,
+        ge=CHARACTER_STATUS_DRAFT,
+        le=CHARACTER_STATUS_PUBLISHED,
+    ),
     session: Session = Depends(get_session),
 ) -> ListResponse[CharacterOut]:
     user_id = request.state.current_user.id
     _get_project_or_raise(session, project_id, user_id)
     items, total = character_service.list_characters(
-        session, project_id=project_id, page=page, page_size=page_size,
+        session,
+        project_id=project_id,
+        page=page,
+        page_size=page_size,
+        status=status,
     )
     return ListResponse.success(
         [CharacterOut.model_validate(c) for c in items],

@@ -43,18 +43,19 @@ export interface Character {
   referenceImageUrl: string | null
   /** character_data.version，更新整棵资产树时必须原样带回。 */
   dataVersion: number
-  status: number
+  status: CharacterStatus
   outfits: Outfit[]
 }
 
-/**
- * 当前后端没有草稿/已发布字段，因此以至少一条包含真实帧的动作作为发布判定。
- * 后端补充显式发布状态后，只需要替换这一处规则。
- */
-export function isPublishedCharacter(character: Character): boolean {
-  return character.outfits.some((outfit) =>
-    outfit.actions.some((action) => action.frames.length > 0),
-  )
+export const CHARACTER_STATUS = {
+  draft: 0,
+  published: 1,
+} as const
+
+export type CharacterStatus = (typeof CHARACTER_STATUS)[keyof typeof CHARACTER_STATUS]
+
+export interface CharacterPageQuery extends PageQuery {
+  status?: CharacterStatus
 }
 
 /** 创建 Character 记录的字段；生成流程由 Workflow Editor 负责。 */
@@ -71,33 +72,10 @@ export interface CreateCharacterInput {
  */
 export interface CharacterApis {
   get(id: Character['id']): Promise<Character>
-  listByProject(projectId: string, query?: PageQuery): Promise<Paged<Character>>
+  listByProject(projectId: string, query?: CharacterPageQuery): Promise<Paged<Character>>
   create(input: CreateCharacterInput): Promise<Character>
   update(character: Character): Promise<Character>
   remove(id: Character['id']): Promise<void>
-}
-
-/**
- * 读取项目下的完整 Character 列表。需要先完整读取再筛选发布状态，避免草稿占用
- * 服务端分页位置，导致后续已经发布的资产在前端永远不可见。
- */
-export async function loadAllCharactersByProject(
-  apis: Pick<CharacterApis, 'listByProject'>,
-  projectId: string,
-  pageSize = 100,
-): Promise<Character[]> {
-  const firstPage = await apis.listByProject(projectId, { page: 1, pageSize })
-  const characters = [...firstPage.items]
-  if (firstPage.pageSize <= 0) return characters
-
-  let page = firstPage.page + 1
-  while (characters.length < firstPage.total) {
-    const nextPage = await apis.listByProject(projectId, { page, pageSize })
-    if (nextPage.items.length === 0) break
-    characters.push(...nextPage.items)
-    page += 1
-  }
-  return characters
 }
 
 interface CharacterFrameDto {
@@ -136,7 +114,7 @@ interface CharacterDto {
   description: string | null
   reference_image_url: string | null
   character_data: CharacterDataDto
-  status: number
+  status: CharacterStatus
 }
 
 function toBackendId(value: string, field: string): number {
@@ -238,6 +216,7 @@ export const characterApis: CharacterApis = {
         project_id: toBackendId(projectId, 'projectId'),
         page: query.page,
         page_size: query.pageSize,
+        status: query.status,
       },
     })
     return { ...result, items: result.items.map(mapCharacter) }

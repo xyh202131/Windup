@@ -1,11 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  isPublishedCharacter,
-  loadAllCharactersByProject,
-  type Character,
-  type CharacterApis,
-} from './index'
+import { CHARACTER_STATUS } from './index'
 
 const characterDto = {
   id: 51,
@@ -68,32 +63,6 @@ function jsonResponse(data: unknown) {
 }
 
 describe('characterApis', () => {
-  it('treats a Character as published only after an action contains real frames', () => {
-    const draft = { outfits: [{ actions: [] }] } as unknown as Character
-    const published = {
-      outfits: [{ actions: [{ frames: [{ imageUrl: 'frame.png' }] }] }],
-    } as unknown as Character
-
-    expect(isPublishedCharacter(draft)).toBe(false)
-    expect(isPublishedCharacter(published)).toBe(true)
-  })
-
-  it('loads every backend page before a caller filters published assets', async () => {
-    const first = { id: '1' } as Character
-    const second = { id: '2' } as Character
-    const listByProject = vi
-      .fn<CharacterApis['listByProject']>()
-      .mockResolvedValueOnce({ items: [first], total: 2, page: 1, pageSize: 1 })
-      .mockResolvedValueOnce({ items: [second], total: 2, page: 2, pageSize: 1 })
-
-    await expect(loadAllCharactersByProject({ listByProject }, '42', 1)).resolves.toEqual([
-      first,
-      second,
-    ])
-    expect(listByProject).toHaveBeenNthCalledWith(1, '42', { page: 1, pageSize: 1 })
-    expect(listByProject).toHaveBeenNthCalledWith(2, '42', { page: 2, pageSize: 1 })
-  })
-
   it('maps the paged Character tree and its project query', async () => {
     let requestUrl = ''
     const characterApis = await loadCharacterApis(async (input) => {
@@ -111,9 +80,15 @@ describe('characterApis', () => {
       )
     })
 
-    const page = await characterApis.listByProject('42', { page: 1, pageSize: 20 })
+    const page = await characterApis.listByProject('42', {
+      page: 1,
+      pageSize: 20,
+      status: CHARACTER_STATUS.published,
+    })
 
-    expect(requestUrl).toBe('https://api.windup.test/characters?project_id=42&page=1&page_size=20')
+    expect(requestUrl).toBe(
+      'https://api.windup.test/characters?project_id=42&page=1&page_size=20&status=1',
+    )
     expect(page).toEqual({
       items: [
         {
