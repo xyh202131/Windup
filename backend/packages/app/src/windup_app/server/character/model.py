@@ -89,7 +89,7 @@ class Character(Base):
     )
 
     status: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, default=CharacterStatus.PUBLISHED
+        SmallInteger, nullable=False, default=CharacterStatus.DRAFT
     )
 
     create_at: Mapped[datetime] = mapped_column(
@@ -135,7 +135,9 @@ class CharacterOutfit(BaseModel):
     name: str = Field(..., description="造型名称")
     description: str | None = Field(default=None, description="造型描述")
     preview_url: str | None = Field(default=None, description="造型预览图 URL")
-    actions: list[CharacterAction] = Field(default_factory=list, description="该造型下的动作列表")
+    actions: list[CharacterAction] = Field(
+        default_factory=list, description="该造型下的动作列表"
+    )
 
 
 class CharacterData(BaseModel):

@@ -4,12 +4,16 @@ import type { Paged, PageQuery } from '@/shared/pagination'
 /** PR #75 将动作类型定义为字符串；已知类型之外的后端扩展也应原样保留。 */
 export type ActionType = string
 
+/** 与后端 CharacterStatus 对齐：0=草稿，1=至少存在一条包含真实帧的动作。 */
 export const CHARACTER_STATUS = {
   DRAFT: 0,
   PUBLISHED: 1,
 } as const
 
-export type CharacterStatus = (typeof CHARACTER_STATUS)[keyof typeof CHARACTER_STATUS]
+export type CharacterPublicationStatus = (typeof CHARACTER_STATUS)[keyof typeof CHARACTER_STATUS]
+
+/** 后端可能扩展新的状态值；读取时原样保留，避免单条新状态导致整页失败。 */
+export type CharacterStatus = number
 
 export interface Frame {
   /** 使用后端显式返回的帧序号，不用数组下标替代。 */
@@ -78,7 +82,7 @@ export interface CharacterApis {
 }
 
 export interface CharacterPageQuery extends PageQuery {
-  status?: CharacterStatus
+  status?: CharacterPublicationStatus
 }
 
 interface CharacterFrameDto {
@@ -127,11 +131,6 @@ function toBackendId(value: string, field: string): number {
   throw new TypeError(`${field} 必须是正整数 ID`)
 }
 
-function mapCharacterStatus(status: number): CharacterStatus {
-  if (status === CHARACTER_STATUS.DRAFT || status === CHARACTER_STATUS.PUBLISHED) return status
-  throw new TypeError('Character.status 必须是 0 或 1')
-}
-
 function mapFrame(dto: CharacterFrameDto): Frame {
   return {
     index: dto.index,
@@ -174,7 +173,7 @@ function mapCharacter(dto: CharacterDto): Character {
     description: dto.description,
     referenceImageUrl: dto.reference_image_url,
     dataVersion: dto.character_data.version,
-    status: mapCharacterStatus(dto.status),
+    status: dto.status,
     outfits: dto.character_data.outfits.map((outfit) => mapOutfit(outfit, characterId)),
   }
 }

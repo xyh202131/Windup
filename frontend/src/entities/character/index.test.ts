@@ -70,12 +70,12 @@ describe('characterApis', () => {
     await expect(characterApis.get('51')).resolves.toMatchObject({ status: 0 })
   })
 
-  it('rejects an unknown publication status at the DTO boundary', async () => {
+  it('preserves an unknown backend status for forward compatibility', async () => {
     const characterApis = await loadCharacterApis(async () =>
       jsonResponse({ ...characterDto, status: 2 }),
     )
 
-    await expect(characterApis.get('51')).rejects.toThrow('Character.status 必须是 0 或 1')
+    await expect(characterApis.get('51')).resolves.toMatchObject({ status: 2 })
   })
 
   it('maps the paged Character tree and sends the publication status query', async () => {
