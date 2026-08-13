@@ -338,6 +338,73 @@ describe('WorkflowController', () => {
     unsubscribe()
   })
 
+  it('订阅忽略进行中事件并转发订阅错误', async () => {
+    const run = createRun([
+      ...completedCharacterNodes(),
+      firstFrameNode({
+        phase: 'generating',
+        generations: [{ taskId: 'task-first-frame', role: 'first_frame' }],
+      }),
+      ...actionNodes().slice(1),
+    ])
+    const { controller, generation, asyncErrors } = createController(run)
+    generation.snapshots.set('task-first-frame', {
+      id: 'task-first-frame',
+      projectId: '1',
+      type: 'first_frame',
+      status: 'running',
+      result: null,
+      error: null,
+    })
+    vi.mocked(generation.apis.subscribe).mockImplementation(
+      (_projectId, _taskId, _expectation, onEvent, onError) => {
+        onEvent?.({
+          taskId: 'task-first-frame',
+          type: 'first_frame',
+          status: 'running',
+          result: null,
+          error: null,
+        })
+        onError?.(new Error('stream failed'))
+        return () => undefined
+      },
+    )
+
+    await controller.resume()
+    expect(asyncErrors).toEqual([new Error('stream failed')])
+    expect(controller.getWorkflow().nodes.find((node) => node.id === 'action-walk')).toMatchObject({
+      phase: 'generating',
+    })
+  })
+
+  it('按节点角色恢复生成快照', async () => {
+    const run = createRun([
+      ...completedCharacterNodes(),
+      firstFrameNode({
+        phase: 'generating',
+        generations: [{ taskId: 'task-first-frame', role: 'first_frame' }],
+      }),
+      ...actionNodes().slice(1),
+    ])
+    const { controller, generation } = createController(run)
+    generation.snapshots.set('task-first-frame', {
+      id: 'task-first-frame',
+      projectId: '1',
+      type: 'first_frame',
+      status: 'running',
+      result: null,
+      error: null,
+    })
+
+    await expect(controller.getGeneration('action-walk', 'first_frame')).resolves.toMatchObject({
+      id: 'task-first-frame',
+    })
+    expect(generation.apis.get).toHaveBeenCalledWith('1', 'task-first-frame', {
+      type: 'first_frame',
+      actionType: 'walk',
+    })
+  })
+
   it('修改命令不再返回第二份 WorkflowRun', async () => {
     const { controller } = createController(createRun(completedCharacterNodes()))
 
@@ -1363,6 +1430,50 @@ describe('WorkflowController', () => {
       },
       { type: 'review', status: 'passed' },
     ])
+  })
+
+  it('生成动作首帧时使用清理后的自定义提示词', async () => {
+    const run = createRun([...completedCharacterNodes(), ...actionNodes()])
+    const firstFrame = run.nodes.find((node) => node.type === 'action-first-frame')
+    if (!firstFrame || firstFrame.type !== 'action-first-frame') throw new Error('missing frame')
+    firstFrame.input.prompt = '  挥手并转身  '
+    const { controller, generation } = createController(run)
+
+    await controller.generateFirstFrame(firstFrame.id, { spriteWidth: 64, spriteHeight: 96 })
+
+    expect(generation.apis.create).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: '挥手并转身' }),
+    )
+  })
+
+  it('动作首帧候选图包含空地址时标记节点失败', async () => {
+    const run = createRun([...completedCharacterNodes(), ...actionNodes()])
+    const firstFrame = run.nodes.find((node) => node.id === 'action-walk')
+    if (!firstFrame || firstFrame.type !== 'action-first-frame') throw new Error('missing frame')
+    firstFrame.phase = 'generating'
+    firstFrame.generations = [{ taskId: 'task-first-frame', role: 'first_frame' }]
+    const { controller } = createController(run)
+
+    await controller.applyGenerationResult({
+      nodeId: 'action-walk',
+      taskId: 'task-first-frame',
+      generation: {
+        id: 'task-first-frame',
+        projectId: '1',
+        type: 'first_frame',
+        status: 'completed',
+        result: {
+          type: 'first_frame',
+          images: [{ url: 'first.png' }, { url: '' }, { url: 'third.png' }],
+        },
+        error: null,
+      },
+    })
+
+    expect(controller.getWorkflow().nodes.find((node) => node.id === 'action-walk')).toMatchObject({
+      status: 'failed',
+      error: '动作首帧结果格式无效',
+    })
   })
 
   it('恢复时只查询当前生成节点，不重复恢复已经通过的首帧任务', async () => {

@@ -83,7 +83,7 @@ export interface CreateQuickStartServiceOptions {
   generationApis: GenerationApis
   prepareProject: PrepareQuickStartProject
   /** 读取首帧图片接口要求的精灵尺寸，并装配导出数据。 */
-  projectApis?: Pick<ProjectApis, 'get'>
+  projectApis: Pick<ProjectApis, 'get'>
   characterApis?: CharacterApis
   mediaApis?: QuickStartMediaApis
   onAsyncError?: (error: Error) => void
@@ -108,7 +108,7 @@ export function createQuickStartService({
   workflowRunApis,
   generationApis,
   prepareProject,
-  projectApis: projectReader,
+  projectApis,
   characterApis,
   mediaApis,
   onAsyncError = (error) => console.error('[quick-start] 异步工作流错误', error),
@@ -118,8 +118,7 @@ export function createQuickStartService({
   async function resolveProjectSpriteSize(projectId: Project['id']) {
     const cached = projectSpriteSizes.get(projectId)
     if (cached) return cached
-    if (!projectReader) throw new Error('项目读取服务尚未配置，不能生成动作首帧')
-    const project = await projectReader.get(projectId)
+    const project = await projectApis.get(projectId)
     projectSpriteSizes.set(project.id, project.spriteSize)
     return project.spriteSize
   }
@@ -555,12 +554,12 @@ export function createQuickStartService({
           : []
       },
       async getExportModel() {
-        if (!characterApis || !projectReader) return null
+        if (!characterApis) return null
         const info = getCharacterInfo(controller) ?? (await resolveCharacterInfo(controller))
         if (!info) return null
         const run = controller.getWorkflow()
         const [project, character] = await Promise.all([
-          projectReader.get(run.projectId),
+          projectApis.get(run.projectId),
           characterApis.get(info.characterId),
         ])
         const generations = await Promise.all(
