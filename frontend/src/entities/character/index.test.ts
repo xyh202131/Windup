@@ -70,12 +70,12 @@ describe('characterApis', () => {
     await expect(characterApis.get('51')).resolves.toMatchObject({ status: 0 })
   })
 
-  it('preserves the Character page when the backend adds an unknown publication status', async () => {
+  it('preserves an unknown backend publication status value', async () => {
     const characterApis = await loadCharacterApis(async () =>
       jsonResponse({ ...characterDto, status: 2 }),
     )
 
-    await expect(characterApis.get('51')).resolves.toMatchObject({ status: 'unknown' })
+    await expect(characterApis.get('51')).resolves.toMatchObject({ status: 2 })
   })
 
   it('maps the paged Character tree and sends the publication status query', async () => {

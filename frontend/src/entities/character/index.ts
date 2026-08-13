@@ -7,13 +7,13 @@ export type ActionType = string
 export const CHARACTER_STATUS = {
   DRAFT: 0,
   PUBLISHED: 1,
-  UNKNOWN: 'unknown',
 } as const
 
 export type CharacterPublicationStatus =
   | typeof CHARACTER_STATUS.DRAFT
   | typeof CHARACTER_STATUS.PUBLISHED
-export type CharacterStatus = CharacterPublicationStatus | typeof CHARACTER_STATUS.UNKNOWN
+/** 响应状态保留后端扩展的数值；查询参数仍仅接受已知发布状态。 */
+export type CharacterStatus = number
 
 export interface Frame {
   /** 使用后端显式返回的帧序号，不用数组下标替代。 */
@@ -131,11 +131,6 @@ function toBackendId(value: string, field: string): number {
   throw new TypeError(`${field} 必须是正整数 ID`)
 }
 
-function mapCharacterStatus(status: number): CharacterStatus {
-  if (status === CHARACTER_STATUS.DRAFT || status === CHARACTER_STATUS.PUBLISHED) return status
-  return CHARACTER_STATUS.UNKNOWN
-}
-
 function mapFrame(dto: CharacterFrameDto): Frame {
   return {
     index: dto.index,
@@ -178,7 +173,7 @@ function mapCharacter(dto: CharacterDto): Character {
     description: dto.description,
     referenceImageUrl: dto.reference_image_url,
     dataVersion: dto.character_data.version,
-    status: mapCharacterStatus(dto.status),
+    status: dto.status,
     outfits: dto.character_data.outfits.map((outfit) => mapOutfit(outfit, characterId)),
   }
 }
