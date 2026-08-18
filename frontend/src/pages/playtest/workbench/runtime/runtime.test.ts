@@ -121,6 +121,23 @@ describe('playtest runtime', () => {
     expect(setMovementInput(sideOnly, actions, 'up', true)).toBe(sideOnly)
     expect(setMovementInput(sideOnly, actions, 'down', true)).toBe(sideOnly)
   })
+
+  it('accepts an action whose only playable frames are directional', () => {
+    const frontOnly: readonly PlaytestAction[] = [
+      {
+        id: 'front-idle',
+        name: '正面待机',
+        type: 'idle',
+        loop: true,
+        frames: [],
+        sequences: {
+          front: [{ imageUrl: '/front-idle.png', durationMs: 100 }],
+        },
+      },
+    ]
+
+    expect(createRuntime(frontOnly, 'front-idle').actionId).toBe('front-idle')
+  })
   it('binds walk while a direction is held and returns to idle on release', () => {
     const idle = createRuntime(actions, 'idle')
     const walking = setDirectionInput(idle, actions, 'right', true)

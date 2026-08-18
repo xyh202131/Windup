@@ -146,4 +146,26 @@ describe('createPlaytestModel', () => {
 
     expect(result.ok && result.model.actions[0]?.frames[0]?.durationMs).toBe(1)
   })
+
+  it('uses a directional sequence as fallback when no legacy side frames exist', () => {
+    const directionalCharacter = structuredClone(character)
+    const idle = directionalCharacter.outfits[0]!.actions[0]!
+    idle.frames = []
+    idle.fps = 0
+    idle.sequences = [
+      {
+        direction: 'front',
+        frameCount: 1,
+        frames: [{ index: 0, imageUrl: '/idle-front.png', durationMs: null }],
+      },
+    ]
+
+    const result = createPlaytestModel(directionalCharacter, 'outfit-default')
+    const mappedIdle = result.ok
+      ? result.model.actions.find((action) => action.id === 'idle')
+      : undefined
+
+    expect(mappedIdle?.frames).toEqual([{ imageUrl: '/idle-front.png', durationMs: 100 }])
+    expect(mappedIdle?.sequences?.front).toEqual(mappedIdle?.frames)
+  })
 })

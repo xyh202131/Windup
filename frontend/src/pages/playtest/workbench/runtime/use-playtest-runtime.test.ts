@@ -45,6 +45,19 @@ const bindings: PlaytestActionBindings = {
   shift: null,
 }
 
+const directionalActions: readonly PlaytestAction[] = actions.map((action) =>
+  action.id === 'walk'
+    ? {
+        ...action,
+        sequences: {
+          side: action.frames,
+          front: [{ imageUrl: '/walk-front.png', durationMs: 100 }],
+          back: [{ imageUrl: '/walk-back.png', durationMs: 100 }],
+        },
+      }
+    : action,
+)
+
 describe('preloadActionFrames', () => {
   it('prioritizes the active action while preloading every unique bound frame', () => {
     const loaded: string[] = []
@@ -80,6 +93,21 @@ describe('preloadActionFrames', () => {
     expect(loaded).toEqual(['/walk-1.png', '/idle-1.png', '/idle-2.png', '/attack-1.png'])
     expect(priorities).toEqual(['high', 'high', 'low', 'low'])
     expect(decoded).toEqual(loaded)
+  })
+
+  it('preloads independent front and back direction frames', () => {
+    const loaded: string[] = []
+    const createImage = () =>
+      ({
+        set src(url: string) {
+          loaded.push(url)
+        },
+      }) as HTMLImageElement
+
+    preloadActionFrames(directionalActions, 'walk', createImage)
+
+    expect(loaded).toContain('/walk-front.png')
+    expect(loaded).toContain('/walk-back.png')
   })
 
   it('does not restart the preload batch when the user switches actions', () => {
@@ -137,5 +165,43 @@ describe('preloadActionFrames', () => {
       actionId: 'idle',
       held: { left: false, right: false },
     })
+  })
+
+  it('routes W and S to depth movement when directional assets exist', () => {
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const { result } = renderHook(() => usePlaytestRuntime(directionalActions, 'idle', bindings))
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', code: 'KeyW' })))
+    expect(result.current.runtime).toMatchObject({ actionId: 'walk', facing: 'back' })
+    act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w', code: 'KeyW' })))
+
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS' })))
+    expect(result.current.runtime).toMatchObject({ actionId: 'walk', facing: 'front' })
+  })
+
+  it('advances the animation clock and clamps position when bounds change', () => {
+    let tick: FrameRequestCallback | undefined
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn((callback: FrameRequestCallback) => {
+        tick = callback
+        return 1
+      }),
+    )
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const { result } = renderHook(() => usePlaytestRuntime(directionalActions, 'walk', bindings))
+
+    act(() => result.current.setBounds({ minX: -20, maxX: 20, minY: -30, maxY: 30 }))
+    act(() => result.current.setMovement('right', true))
+    act(() => tick?.(0))
+    act(() => tick?.(50))
+    expect(result.current.runtime.x).toBeGreaterThan(0)
+
+    act(() => result.current.setBounds({ minX: -2, maxX: 2, minY: -3, maxY: 3 }))
+    expect(result.current.runtime).toMatchObject({ x: 2, y: 0 })
   })
 })

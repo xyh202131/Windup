@@ -1,7 +1,10 @@
 """角色 CRUD API 集成测试。"""
 
+from types import SimpleNamespace
+
 import pytest
 
+from windup_app.web.api import character as character_api
 from windup_app.server.character.model import Character
 from windup_app.server.character.service import service as character_service
 from windup_common.enums.character import CharacterStatus
@@ -80,6 +83,59 @@ def test_character_model_defaults_to_draft(db_session):
     db_session.flush()
 
     assert character.status == CharacterStatus.DRAFT
+
+
+def test_extract_object_keys_includes_directional_action_frames(monkeypatch):
+    """删除角色时应同时清理 side/front/back 的对象存储资源。"""
+    monkeypatch.setattr(
+        character_api,
+        "storage_settings",
+        SimpleNamespace(download_base="https://assets.example.com"),
+    )
+    character = Character(
+        project_id=1,
+        workflow_run_id=1,
+        reference_image_url="https://assets.example.com/characters/reference.png",
+        character_data={
+            "outfits": [
+                {
+                    "preview_url": "https://assets.example.com/outfits/preview.png",
+                    "actions": [
+                        {
+                            "frames": [
+                                {
+                                    "image_url": "https://assets.example.com/actions/side.png",
+                                }
+                            ],
+                            "sequences": [
+                                {
+                                    "direction": "front",
+                                    "frames": [
+                                        {
+                                            "image_url": "https://assets.example.com/actions/front.png",
+                                        }
+                                    ],
+                                },
+                                {
+                                    "direction": "back",
+                                    "frames": [
+                                        {"image_url": "https://other.example.com/back.png"}
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert character_api._extract_object_keys(character) == [
+        "characters/reference.png",
+        "outfits/preview.png",
+        "actions/side.png",
+        "actions/front.png",
+    ]
 
 
 # -- POST /characters --------------------------------------------------------

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PlaytestStage } from './stage'
 
@@ -44,5 +44,37 @@ describe('PlaytestStage', () => {
     )
 
     expect(screen.getByText('暂无可播放帧')).toBeTruthy()
+  })
+
+  it('measures horizontal and depth bounds from the stage and sprite sizes', () => {
+    const onBoundsChange = vi.fn()
+    render(
+      <PlaytestStage
+        frame={{ imageUrl: '/idle-01.png', durationMs: 100 }}
+        x={0}
+        y={0}
+        facing="right"
+        onBoundsChange={onBoundsChange}
+      />,
+    )
+    const stage = screen.getByRole('region', { name: '预览舞台' })
+    const sprite = stage.querySelector('img')!
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({
+      width: 500,
+      height: 400,
+    } as DOMRect)
+    vi.spyOn(sprite, 'getBoundingClientRect').mockReturnValue({
+      width: 100,
+      height: 120,
+    } as DOMRect)
+
+    fireEvent.load(sprite)
+
+    expect(onBoundsChange).toHaveBeenLastCalledWith({
+      minX: -172,
+      maxX: 172,
+      minY: -96,
+      maxY: 96,
+    })
   })
 })
