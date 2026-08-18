@@ -64,4 +64,4 @@ npm run build
 - 帧顺序使用后端显式 `Frame.index`，断号或重复序号会在读取图片前失败。
 - `durationMs` 为空时才按 Action FPS 计算，不覆盖后端逐帧时长。
 - 锚点和脚线沿用 `ai_engine.align_bottom_center` 的底部居中与 `0.92` 脚线约定。
-- 当前 Character 只表达单方向动作，因此统一导出为 `default`；四向和八向需等待资产契约扩展。
+- 旧 Character 的顶层 `frames` 导出为 `side`，供左右镜像复用；存在方向序列时分别导出 `front` / `back`。尚未发布到 Character 的工作流结果因没有方向来源仍保留 `default`。

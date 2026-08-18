@@ -226,6 +226,83 @@ describe('characterApis', () => {
     })
   })
 
+  it('preserves directional action sequences across GET and PATCH', async () => {
+    let request: Request | undefined
+    const directionalDto = structuredClone(characterDto)
+    const directionalSequences = [
+      {
+        direction: 'front',
+        frame_count: 1,
+        frames: [
+          {
+            index: 0,
+            image_url: 'https://cdn.windup.test/walk-front-01.png',
+            duration_ms: 100,
+          },
+        ],
+      },
+      {
+        direction: 'back',
+        frame_count: 1,
+        frames: [
+          {
+            index: 0,
+            image_url: 'https://cdn.windup.test/walk-back-01.png',
+            duration_ms: 100,
+          },
+        ],
+      },
+    ]
+    Object.assign(directionalDto.character_data.outfits[0]!.actions[0]!, {
+      sequences: directionalSequences,
+    })
+    const characterApis = await loadCharacterApis(async (input, init) => {
+      request = new Request(input, init)
+      return jsonResponse(directionalDto)
+    })
+
+    const character = await characterApis.get('51')
+    expect(character.outfits[0]?.actions[0]?.sequences).toEqual([
+      {
+        direction: 'front',
+        frameCount: 1,
+        frames: [
+          {
+            index: 0,
+            imageUrl: 'https://cdn.windup.test/walk-front-01.png',
+            durationMs: 100,
+          },
+        ],
+      },
+      {
+        direction: 'back',
+        frameCount: 1,
+        frames: [
+          {
+            index: 0,
+            imageUrl: 'https://cdn.windup.test/walk-back-01.png',
+            durationMs: 100,
+          },
+        ],
+      },
+    ])
+
+    await characterApis.update(character)
+    await expect(request?.json()).resolves.toMatchObject({
+      character_data: {
+        outfits: [
+          {
+            actions: [
+              {
+                sequences: directionalSequences,
+              },
+            ],
+          },
+        ],
+      },
+    })
+  })
+
   it('deletes one Character through the backend resource path', async () => {
     let request: Request | undefined
     const characterApis = await loadCharacterApis(async (input, init) => {

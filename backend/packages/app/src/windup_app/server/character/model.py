@@ -33,6 +33,7 @@
 """
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import (
@@ -126,6 +127,14 @@ class CharacterFrame(BaseModel):
     duration_ms: int | None = Field(default=None, gt=0, description="帧时长(毫秒)")
 
 
+class CharacterActionSequence(BaseModel):
+    """一个动作的单方向帧序列。side 可供左右镜像复用。"""
+
+    direction: Literal["side", "front", "back"]
+    frame_count: int = Field(ge=0, description="该方向声明的帧数")
+    frames: list[CharacterFrame] = Field(default_factory=list, description="该方向帧列表")
+
+
 class CharacterAction(BaseModel):
     """动作（从属于某个造型）。"""
 
@@ -136,6 +145,10 @@ class CharacterAction(BaseModel):
     fps: float = Field(default=12, gt=0, description="播放帧率")
     frame_count: int = Field(ge=0, description="帧数")
     frames: list[CharacterFrame] = Field(default_factory=list, description="帧列表")
+    sequences: list[CharacterActionSequence] = Field(
+        default_factory=list,
+        description="可选多方向序列；旧数据的 frames 视为 side",
+    )
 
 
 class CharacterOutfit(BaseModel):

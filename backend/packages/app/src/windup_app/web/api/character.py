@@ -86,10 +86,15 @@ def _extract_object_keys(character: Character) -> list[str]:
         if url and url.startswith(prefix):
             keys.append(url[len(prefix):])
         for action in outfit.get("actions", []):
-            for frame in action.get("frames", []):
-                url = frame.get("image_url")
-                if url and url.startswith(prefix):
-                    keys.append(url[len(prefix):])
+            frame_groups = [action.get("frames", [])]
+            frame_groups.extend(
+                sequence.get("frames", []) for sequence in action.get("sequences", [])
+            )
+            for frames in frame_groups:
+                for frame in frames:
+                    url = frame.get("image_url")
+                    if url and url.startswith(prefix):
+                        keys.append(url[len(prefix):])
 
     return keys
 

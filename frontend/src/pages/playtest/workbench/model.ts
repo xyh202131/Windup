@@ -1,4 +1,4 @@
-import type { ActionType, Character, Frame } from '@/entities'
+import type { ActionDirection, ActionType, Character, Frame } from '@/entities'
 
 export interface PlaytestFrame {
   readonly imageUrl: string
@@ -11,6 +11,9 @@ export interface PlaytestAction {
   readonly type: ActionType
   /** 一次性动作播完停在末帧；只有循环动作才回到首帧。 */
   readonly loop: boolean
+  /** side 始终存在；front/back 只在真实方向资产存在时提供。 */
+  readonly sequences?: Readonly<Partial<Record<ActionDirection, readonly PlaytestFrame[]>>>
+  /** 旧调用方的侧向序列别名。 */
   readonly frames: readonly PlaytestFrame[]
 }
 
@@ -43,6 +46,13 @@ function orderedFrames(frames: readonly Frame[]): readonly Frame[] {
   return [...frames].sort((left, right) => left.index - right.index)
 }
 
+function playtestFrames(frames: readonly Frame[], fps: number): readonly PlaytestFrame[] {
+  return orderedFrames(frames).map((frame) => ({
+    imageUrl: frame.imageUrl,
+    durationMs: frameDuration(frame.durationMs, fps),
+  }))
+}
+
 /** Playtest 只保留渲染和操控所需的数据；审核、生成与根位移仍属于各自原有边界。 */
 export function createPlaytestModel(character: Character, outfitId: string): PlaytestModelResult {
   const outfit = character.outfits.find((candidate) => candidate.id === outfitId)
@@ -54,17 +64,37 @@ export function createPlaytestModel(character: Character, outfitId: string): Pla
       characterId: character.id,
       outfitName: outfit.name,
       actions: outfit.actions
-        .filter((action) => action.frames.length > 0)
-        .map((action) => ({
-          id: action.id,
-          name: action.name,
-          type: action.type,
-          loop: action.loop,
-          frames: orderedFrames(action.frames).map((frame) => ({
-            imageUrl: frame.imageUrl,
-            durationMs: frameDuration(frame.durationMs, action.fps),
-          })),
-        })),
+        .filter(
+          (action) =>
+            action.frames.length > 0 ||
+            action.sequences?.some((sequence) => sequence.frames.length > 0) === true,
+        )
+        .map((action) => {
+          const side = playtestFrames(
+            action.sequences?.find((sequence) => sequence.direction === 'side')?.frames ??
+              action.frames,
+            action.fps,
+          )
+          const sequences = Object.fromEntries(
+            [
+              ['side', side] as const,
+              ...(action.sequences ?? []).map(
+                (sequence) =>
+                  [sequence.direction, playtestFrames(sequence.frames, action.fps)] as const,
+              ),
+            ].filter(([, frames]) => frames.length > 0),
+          ) as Partial<Record<ActionDirection, readonly PlaytestFrame[]>>
+          const fallbackFrames = side.length > 0 ? side : (Object.values(sequences)[0] ?? [])
+
+          return {
+            id: action.id,
+            name: action.name,
+            type: action.type,
+            loop: action.loop,
+            sequences,
+            frames: fallbackFrames,
+          }
+        }),
     },
   }
 }

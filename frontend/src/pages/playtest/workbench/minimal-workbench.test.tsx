@@ -126,17 +126,25 @@ describe('PlaytestWorkbench minimal control path', () => {
     expect(pressedState('待机')).toBe('true')
   })
 
-  it('shows fixed default assignments and disables controls without an action', () => {
+  it('shows action assignments separately and disables directions without assets', () => {
     renderWorkbench()
 
     expect((screen.getByLabelText('空格键分配动作') as HTMLSelectElement).value).toBe('jump')
-    expect((screen.getByLabelText('A 分配动作') as HTMLSelectElement).value).toBe('walk')
     expect((screen.getByLabelText('Shift 分配动作') as HTMLSelectElement).value).toBe('')
-    expect((screen.getByLabelText('D 分配动作') as HTMLSelectElement).value).toBe('walk')
+    expect(screen.queryByLabelText('A 分配动作')).toBeNull()
+    expect(screen.queryByLabelText('D 分配动作')).toBeNull()
     expect((screen.getByRole('button', { name: 'Shift 键' }) as HTMLButtonElement).disabled).toBe(
       true,
     )
-    expect((screen.getByRole('button', { name: '向左' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: '向左移动' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+    expect((screen.getByRole('button', { name: '向后移动' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    expect((screen.getByRole('button', { name: '向前移动' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
   })
 
   it('uses an adjusted assignment immediately without reloading the action frames', () => {
@@ -153,7 +161,7 @@ describe('PlaytestWorkbench minimal control path', () => {
   it('uses the same control path for pointer press and release', () => {
     renderWorkbench()
 
-    const left = screen.getByRole('button', { name: '向左' })
+    const left = screen.getByRole('button', { name: '向左移动' })
     const setPointerCapture = vi.fn()
     const releasePointerCapture = vi.fn()
     Object.assign(left, {

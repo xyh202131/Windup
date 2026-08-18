@@ -5,9 +5,11 @@ import type { PlaytestAction } from '../model'
 import {
   advanceRuntime,
   createRuntime,
+  framesForFacing,
   selectRuntimeAction,
   setControlInput,
   setDirectionInput,
+  setMovementInput,
 } from './runtime'
 
 const actions: readonly PlaytestAction[] = [
@@ -45,12 +47,80 @@ const actions: readonly PlaytestAction[] = [
 
 const bindings: PlaytestActionBindings = {
   space: 'attack',
-  a: 'attack',
   shift: null,
-  d: 'walk',
 }
 
+const directionalActions: readonly PlaytestAction[] = actions.map((action) =>
+  action.id === 'walk'
+    ? {
+        ...action,
+        sequences: {
+          side: action.frames,
+          front: [
+            { imageUrl: '/walk-front-1.png', durationMs: 80 },
+            { imageUrl: '/walk-front-2.png', durationMs: 120 },
+          ],
+          back: [
+            { imageUrl: '/walk-back-1.png', durationMs: 80 },
+            { imageUrl: '/walk-back-2.png', durationMs: 120 },
+          ],
+        },
+      }
+    : { ...action, sequences: { side: action.frames } },
+)
+
 describe('playtest runtime', () => {
+  it('moves diagonally at the cardinal speed and selects the last pressed direction', () => {
+    const idle = createRuntime(directionalActions, 'idle')
+    const right = setMovementInput(idle, directionalActions, 'right', true)
+    const upRight = setMovementInput(right, directionalActions, 'up', true)
+    const advanced = advanceRuntime(
+      upRight,
+      directionalActions,
+      100,
+      { minX: -100, maxX: 100, minY: -100, maxY: 100 },
+      150,
+    )
+
+    expect(advanced.x).toBeCloseTo(10.607, 3)
+    expect(advanced.y).toBeCloseTo(-10.607, 3)
+    expect(advanced).toMatchObject({ facing: 'back', held: { right: true, up: true } })
+  })
+
+  it('uses front and back sequences while horizontal facing reuses side frames', () => {
+    const walk = directionalActions.find((action) => action.id === 'walk')!
+
+    expect(framesForFacing(walk, 'left')).toBe(walk.sequences?.side)
+    expect(framesForFacing(walk, 'right')).toBe(walk.sequences?.side)
+    expect(framesForFacing(walk, 'front')?.[0]?.imageUrl).toBe('/walk-front-1.png')
+    expect(framesForFacing(walk, 'back')?.[0]?.imageUrl).toBe('/walk-back-1.png')
+  })
+
+  it('keeps animation progress when movement changes to another available direction', () => {
+    const walking = setMovementInput(
+      createRuntime(directionalActions, 'walk'),
+      directionalActions,
+      'right',
+      true,
+    )
+    const advanced = advanceRuntime(
+      walking,
+      directionalActions,
+      90,
+      { minX: -100, maxX: 100, minY: -100, maxY: 100 },
+      0,
+    )
+    const turned = setMovementInput(advanced, directionalActions, 'down', true)
+
+    expect(turned).toMatchObject({ facing: 'front', frameIndex: 1, frameElapsedMs: 10 })
+  })
+
+  it('does not accept vertical movement when only a legacy side sequence exists', () => {
+    const sideOnly = createRuntime(actions, 'walk')
+
+    expect(setMovementInput(sideOnly, actions, 'up', true)).toBe(sideOnly)
+    expect(setMovementInput(sideOnly, actions, 'down', true)).toBe(sideOnly)
+  })
   it('binds walk while a direction is held and returns to idle on release', () => {
     const idle = createRuntime(actions, 'idle')
     const walking = setDirectionInput(idle, actions, 'right', true)
@@ -59,13 +129,13 @@ describe('playtest runtime', () => {
     expect(walking).toMatchObject({
       actionId: 'walk',
       frameIndex: 0,
-      facing: 1,
+      facing: 'right',
       held: { left: false, right: true },
     })
     expect(released).toMatchObject({
       actionId: 'idle',
       frameIndex: 0,
-      facing: 1,
+      facing: 'right',
       held: { left: false, right: false },
     })
   })
@@ -95,20 +165,14 @@ describe('playtest runtime', () => {
       150,
     )
 
-    expect(advanced).toMatchObject({ x: 0, facing: -1, actionId: 'attack' })
+    expect(advanced).toMatchObject({ x: 0, facing: 'left', actionId: 'attack' })
   })
 
-  it('uses the assigned action while keeping horizontal facing independent from movement', () => {
-    const attackingLeft = setControlInput(
-      createRuntime(actions, 'idle'),
-      actions,
-      bindings,
-      'a',
-      true,
-    )
-    const advanced = advanceRuntime(attackingLeft, actions, 100, { minX: -100, maxX: 100 }, 150)
+  it('keeps A and D reserved for movement outside the action binding contract', () => {
+    const walkingLeft = setMovementInput(createRuntime(actions, 'idle'), actions, 'left', true)
+    const advanced = advanceRuntime(walkingLeft, actions, 100, { minX: -100, maxX: 100 }, 150)
 
-    expect(advanced).toMatchObject({ actionId: 'attack', facing: -1, x: 0 })
+    expect(advanced).toMatchObject({ actionId: 'walk', facing: 'left', x: -15 })
   })
 
   it('triggers an assigned vertical action and ignores an unassigned control', () => {

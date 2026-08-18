@@ -72,7 +72,7 @@ describe('createCharacterExportModel', () => {
       source: { workflowRunId: '501', generationIds: [] },
     })
     expect(model.actions[0]?.sequences[0]).toMatchObject({
-      direction: 'default',
+      direction: 'side',
       expectedFrameCount: 3,
       loop: true,
       anchor: { x: 0.5, y: 0.92 },
@@ -83,6 +83,37 @@ describe('createCharacterExportModel', () => {
       { index: 0, imageUrl: '/walk-01.png', durationMs: 100 },
       { index: 1, imageUrl: '/walk-02.png', durationMs: 90 },
       { index: 2, imageUrl: '/walk-03.png', durationMs: 120 },
+    ])
+  })
+
+  it('exports every available directional sequence independently', () => {
+    const directional = structuredClone(character)
+    directional.outfits[0]!.actions[0]!.sequences = [
+      {
+        direction: 'front',
+        frameCount: 1,
+        frames: [{ index: 0, imageUrl: '/walk-front-01.png', durationMs: 110 }],
+      },
+      {
+        direction: 'back',
+        frameCount: 1,
+        frames: [{ index: 0, imageUrl: '/walk-back-01.png', durationMs: 120 }],
+      },
+    ]
+
+    const model = createCharacterExportModel({
+      project,
+      character: directional,
+      outfitId: 'outfit-default',
+    })
+
+    expect(model.actions[0]?.sequences.map((sequence) => sequence.direction)).toEqual([
+      'side',
+      'front',
+      'back',
+    ])
+    expect(model.actions[0]?.sequences[1]?.frames).toEqual([
+      { index: 0, imageUrl: '/walk-front-01.png', durationMs: 110 },
     ])
   })
 

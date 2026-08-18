@@ -1,12 +1,15 @@
 import type { PlaytestActionBindings, PlaytestControlKey } from '../bindings'
-import type { PlaytestAction } from '../model'
+import type { PlaytestAction, PlaytestFrame } from '../model'
 
 export type Direction = 'left' | 'right'
-export type Facing = -1 | 1
+export type MovementDirection = 'up' | 'down' | Direction
+export type Facing = 'left' | 'right' | 'front' | 'back'
 
 export interface StageBounds {
   readonly minX: number
   readonly maxX: number
+  readonly minY?: number
+  readonly maxY?: number
 }
 
 export interface PlaytestRuntime {
@@ -14,24 +17,47 @@ export interface PlaytestRuntime {
   readonly frameIndex: number
   readonly frameElapsedMs: number
   readonly x: number
+  readonly y: number
   readonly facing: Facing
-  readonly held: Readonly<Record<Direction, boolean>>
+  readonly held: Readonly<Record<MovementDirection, boolean>>
 }
 
-const EMPTY_HELD: PlaytestRuntime['held'] = { left: false, right: false }
+const EMPTY_HELD: PlaytestRuntime['held'] = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+}
+
+export function framesForFacing(
+  action: PlaytestAction,
+  facing: Facing,
+): readonly PlaytestFrame[] | undefined {
+  if (facing === 'left' || facing === 'right') {
+    return action.sequences?.side ?? action.frames
+  }
+  return action.sequences?.[facing]
+}
+
+function hasFrames(action: PlaytestAction): boolean {
+  return (
+    action.frames.length > 0 ||
+    Object.values(action.sequences ?? {}).some((frames) => (frames?.length ?? 0) > 0)
+  )
+}
 
 function actionById(
   actions: readonly PlaytestAction[],
   actionId: string | null,
 ): PlaytestAction | undefined {
-  return actions.find((action) => action.id === actionId && action.frames.length > 0)
+  return actions.find((action) => action.id === actionId && hasFrames(action))
 }
 
 function actionByType(
   actions: readonly PlaytestAction[],
   type: PlaytestAction['type'],
 ): PlaytestAction | undefined {
-  return actions.find((action) => action.type === type && action.frames.length > 0)
+  return actions.find((action) => action.type === type && hasFrames(action))
 }
 
 function initialAction(
@@ -41,7 +67,7 @@ function initialAction(
   return (
     actionById(actions, requestedActionId) ??
     actionByType(actions, 'idle') ??
-    actions.find((action) => action.frames.length > 0)
+    actions.find(hasFrames)
   )
 }
 
@@ -54,7 +80,8 @@ export function createRuntime(
     frameIndex: 0,
     frameElapsedMs: 0,
     x: 0,
-    facing: 1,
+    y: 0,
+    facing: 'right',
     held: EMPTY_HELD,
   }
 }
@@ -75,17 +102,87 @@ export function selectRuntimeAction(
   }
 }
 
-function horizontalAxis(held: PlaytestRuntime['held']): -1 | 0 | 1 {
-  if (held.left === held.right) return 0
-  return held.left ? -1 : 1
+function axis(negative: boolean, positive: boolean): -1 | 0 | 1 {
+  if (negative === positive) return 0
+  return negative ? -1 : 1
 }
 
-function frameDurationMs(action: PlaytestAction, frameIndex: number): number {
-  return Math.max(1, action.frames[frameIndex]?.durationMs ?? 1)
+function horizontalAxis(held: PlaytestRuntime['held']): -1 | 0 | 1 {
+  return axis(held.left, held.right)
+}
+
+function verticalAxis(held: PlaytestRuntime['held']): -1 | 0 | 1 {
+  return axis(held.up, held.down)
+}
+
+function frameDurationMs(frames: readonly PlaytestFrame[], frameIndex: number): number {
+  return Math.max(1, frames[frameIndex]?.durationMs ?? 1)
 }
 
 function isLocomotionAction(action: PlaytestAction): boolean {
   return action.type === 'walk' || action.type === 'run'
+}
+
+function facingForDirection(direction: MovementDirection): Facing {
+  if (direction === 'up') return 'back'
+  if (direction === 'down') return 'front'
+  return direction
+}
+
+function supportedDirection(action: PlaytestAction, direction: MovementDirection): boolean {
+  return (framesForFacing(action, facingForDirection(direction))?.length ?? 0) > 0
+}
+
+function remainingFacing(held: PlaytestRuntime['held'], fallback: Facing): Facing {
+  if (held.left) return 'left'
+  if (held.right) return 'right'
+  if (held.up) return 'back'
+  if (held.down) return 'front'
+  return fallback
+}
+
+export function setMovementInput(
+  runtime: PlaytestRuntime,
+  actions: readonly PlaytestAction[],
+  direction: MovementDirection,
+  pressed: boolean,
+): PlaytestRuntime {
+  if (runtime.held[direction] === pressed) return runtime
+
+  const activeAction = actionById(actions, runtime.actionId)
+  const locomotion = actionByType(actions, 'walk') ?? actionByType(actions, 'run')
+  const directionAction = locomotion ?? activeAction
+  if (
+    pressed &&
+    (directionAction === undefined || !supportedDirection(directionAction, direction))
+  ) {
+    return runtime
+  }
+
+  const held = { ...runtime.held, [direction]: pressed }
+  const isMoving = horizontalAxis(held) !== 0 || verticalAxis(held) !== 0
+  const shouldReturnToIdle =
+    !isMoving && activeAction !== undefined && isLocomotionAction(activeAction)
+  const nextAction = shouldReturnToIdle
+    ? actionByType(actions, 'idle')
+    : isMoving
+      ? locomotion
+      : activeAction
+  const nextActionId = nextAction?.id ?? runtime.actionId
+  const nextFacing = pressed
+    ? facingForDirection(direction)
+    : runtime.facing === facingForDirection(direction)
+      ? remainingFacing(held, runtime.facing)
+      : runtime.facing
+
+  return {
+    ...runtime,
+    held,
+    facing: nextFacing,
+    actionId: nextActionId,
+    frameIndex: nextActionId === runtime.actionId ? runtime.frameIndex : 0,
+    frameElapsedMs: nextActionId === runtime.actionId ? runtime.frameElapsedMs : 0,
+  }
 }
 
 export function setDirectionInput(
@@ -94,14 +191,7 @@ export function setDirectionInput(
   direction: Direction,
   pressed: boolean,
 ): PlaytestRuntime {
-  const locomotion = actionByType(actions, 'walk') ?? actionByType(actions, 'run')
-  return setControlInput(
-    runtime,
-    actions,
-    { a: locomotion?.id ?? null, d: locomotion?.id ?? null, space: null, shift: null },
-    direction === 'left' ? 'a' : 'd',
-    pressed,
-  )
+  return setMovementInput(runtime, actions, direction, pressed)
 }
 
 export function setControlInput(
@@ -111,38 +201,12 @@ export function setControlInput(
   key: PlaytestControlKey,
   pressed: boolean,
 ): PlaytestRuntime {
-  if (key === 'space' || key === 'shift') {
-    if (!pressed || bindings[key] === null) return runtime
-    const action = actionById(actions, bindings[key])
-    if (action === undefined) return runtime
-    if (action.id !== runtime.actionId) return selectRuntimeAction(runtime, actions, action.id)
-    if (action.loop) return runtime
-    return { ...runtime, frameIndex: 0, frameElapsedMs: 0 }
-  }
-
-  const direction: Direction = key === 'a' ? 'left' : 'right'
-  if (runtime.held[direction] === pressed) return runtime
-
-  const held = { ...runtime.held, [direction]: pressed }
-  const axis = horizontalAxis(held)
-  const activeAction = actionById(actions, runtime.actionId)
-  const boundKey = axis < 0 ? 'a' : 'd'
-  const boundAction = axis === 0 ? undefined : actionById(actions, bindings[boundKey])
-  const shouldReturnToIdle =
-    axis === 0 &&
-    (activeAction?.id === bindings[key] ||
-      (activeAction !== undefined && isLocomotionAction(activeAction)))
-  const action = shouldReturnToIdle ? actionByType(actions, 'idle') : boundAction
-  const nextActionId = action?.id ?? runtime.actionId
-
-  return {
-    ...runtime,
-    held,
-    facing: axis === 0 ? runtime.facing : axis,
-    actionId: nextActionId,
-    frameIndex: nextActionId === runtime.actionId ? runtime.frameIndex : 0,
-    frameElapsedMs: nextActionId === runtime.actionId ? runtime.frameElapsedMs : 0,
-  }
+  if (!pressed || bindings[key] === null) return runtime
+  const action = actionById(actions, bindings[key])
+  if (action === undefined) return runtime
+  if (action.id !== runtime.actionId) return selectRuntimeAction(runtime, actions, action.id)
+  if (action.loop) return runtime
+  return { ...runtime, frameIndex: 0, frameElapsedMs: 0 }
 }
 
 export function advanceRuntime(
@@ -156,36 +220,45 @@ export function advanceRuntime(
 
   const action = actionById(actions, runtime.actionId)
   if (action === undefined) return runtime
+  const frames = framesForFacing(action, runtime.facing) ?? action.frames
+  if (frames.length === 0) return runtime
 
-  const axis = horizontalAxis(runtime.held)
-  const movementAxis = isLocomotionAction(action) ? axis : 0
+  const rawX = isLocomotionAction(action) ? horizontalAxis(runtime.held) : 0
+  const rawY = isLocomotionAction(action) ? verticalAxis(runtime.held) : 0
+  const magnitude = rawX !== 0 && rawY !== 0 ? Math.SQRT1_2 : 1
+  const minY = bounds.minY ?? runtime.y
+  const maxY = bounds.maxY ?? runtime.y
   const nextX = Math.min(
     bounds.maxX,
-    Math.max(bounds.minX, runtime.x + (movementAxis * movementSpeed * deltaMs) / 1000),
+    Math.max(bounds.minX, runtime.x + (rawX * magnitude * movementSpeed * deltaMs) / 1000),
   )
-  const lastFrameIndex = action.frames.length - 1
+  const nextY = Math.min(
+    maxY,
+    Math.max(minY, runtime.y + (rawY * magnitude * movementSpeed * deltaMs) / 1000),
+  )
+  const lastFrameIndex = frames.length - 1
   let frameIndex = Math.min(runtime.frameIndex, lastFrameIndex)
   let frameElapsedMs = runtime.frameElapsedMs + deltaMs
 
-  let currentFrameDurationMs = frameDurationMs(action, frameIndex)
+  let currentFrameDurationMs = frameDurationMs(frames, frameIndex)
   while (frameElapsedMs >= currentFrameDurationMs) {
-    // 非循环动作走到末帧就停住：攻击、跳跃这类一次性动作回到首帧会变成假的循环动画。
     if (!action.loop && frameIndex === lastFrameIndex) {
       frameElapsedMs = currentFrameDurationMs
       break
     }
     frameElapsedMs -= currentFrameDurationMs
-    frameIndex = (frameIndex + 1) % action.frames.length
-    currentFrameDurationMs = frameDurationMs(action, frameIndex)
+    frameIndex = (frameIndex + 1) % frames.length
+    currentFrameDurationMs = frameDurationMs(frames, frameIndex)
   }
 
   if (
     nextX === runtime.x &&
+    nextY === runtime.y &&
     frameIndex === runtime.frameIndex &&
     frameElapsedMs === runtime.frameElapsedMs
   ) {
     return runtime
   }
 
-  return { ...runtime, x: nextX, frameIndex, frameElapsedMs }
+  return { ...runtime, x: nextX, y: nextY, frameIndex, frameElapsedMs }
 }

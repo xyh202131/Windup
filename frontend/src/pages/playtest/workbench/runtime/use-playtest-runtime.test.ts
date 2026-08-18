@@ -42,9 +42,7 @@ const actions: readonly PlaytestAction[] = [
 
 const bindings: PlaytestActionBindings = {
   space: 'attack',
-  a: 'attack',
   shift: null,
-  d: 'walk',
 }
 
 describe('preloadActionFrames', () => {
@@ -105,7 +103,7 @@ describe('preloadActionFrames', () => {
     expect(createImage).toHaveBeenCalledTimes(4)
   })
 
-  it('routes Space/Shift/A/D through the current action assignments', () => {
+  it('routes Space and Shift through assignments while movement keys stay fixed', () => {
     vi.stubGlobal(
       'requestAnimationFrame',
       vi.fn(() => 1),
@@ -128,7 +126,7 @@ describe('preloadActionFrames', () => {
     expect(result.current.action?.id).toBe('idle')
 
     act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA' })))
-    expect(result.current.runtime).toMatchObject({ actionId: 'attack', facing: -1 })
+    expect(result.current.runtime).toMatchObject({ actionId: 'walk', facing: 'left' })
     act(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'a', code: 'KeyA' })))
     expect(result.current.runtime).toMatchObject({ actionId: 'idle', held: { left: false } })
 

@@ -97,6 +97,60 @@ def test_create_with_name(auth_client):
     assert body["data"]["project_id"] == project["id"]
 
 
+def test_directional_only_action_is_published_and_roundtrips(auth_client):
+    project = _create_project(auth_client)
+    payload = _payload(
+        project["id"],
+        character_data={
+            "outfits": [
+                {
+                    "id": "outfit-1",
+                    "name": "四向造型",
+                    "actions": [
+                        {
+                            "id": "walk-1",
+                            "type": "walk",
+                            "name": "四向行走",
+                            "frame_count": 0,
+                            "frames": [],
+                            "sequences": [
+                                {
+                                    "direction": "front",
+                                    "frame_count": 1,
+                                    "frames": [
+                                        {
+                                            "index": 0,
+                                            "image_url": "https://example.com/walk-front.png",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    created = auth_client.post("/characters", json=payload).json()["data"]
+    fetched = auth_client.get(f"/characters/{created['id']}").json()["data"]
+
+    assert created["status"] == CharacterStatus.PUBLISHED
+    assert fetched["character_data"]["outfits"][0]["actions"][0]["sequences"] == [
+        {
+            "direction": "front",
+            "frame_count": 1,
+            "frames": [
+                {
+                    "index": 0,
+                    "image_url": "https://example.com/walk-front.png",
+                    "duration_ms": None,
+                }
+            ],
+        },
+    ]
+
+
 def test_create_without_name(auth_client):
     project = _create_project(auth_client)
     resp = auth_client.post("/characters", json=_payload(project["id"], name=None))

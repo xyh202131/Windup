@@ -9,15 +9,19 @@ import type { PlaytestAction } from '../model'
 import {
   advanceRuntime,
   createRuntime,
+  framesForFacing,
   selectRuntimeAction,
   setControlInput,
+  setMovementInput,
   type Direction,
+  type MovementDirection,
   type StageBounds,
 } from './runtime'
 
 const MOVEMENT_SPEED = 150
 const MAX_FRAME_DELTA_MS = 50
-const INITIAL_BOUNDS: StageBounds = { minX: 0, maxX: 0 }
+const INITIAL_BOUNDS: StageBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+const MOVEMENT_DIRECTIONS: readonly MovementDirection[] = ['up', 'down', 'left', 'right']
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -29,14 +33,30 @@ function isTypingTarget(target: EventTarget | null): boolean {
   )
 }
 
-function keyboardControl(key: string, code: string): PlaytestControlKey | null {
+function keyboardInput(key: string, code: string): MovementDirection | PlaytestControlKey | null {
   const normalized = key.toLowerCase()
-  if (normalized === 'arrowleft') return 'a'
-  if (normalized === 'arrowright') return 'd'
-  if (normalized === 'a' || normalized === 'd') return normalized
+  if (normalized === 'arrowleft' || normalized === 'a') return 'left'
+  if (normalized === 'arrowright' || normalized === 'd') return 'right'
+  if (normalized === 'arrowup' || normalized === 'w') return 'up'
+  if (normalized === 'arrowdown' || normalized === 's') return 'down'
   if (code === 'Space' || key === ' ' || normalized === 'spacebar') return 'space'
   if (code === 'ShiftLeft' || code === 'ShiftRight' || normalized === 'shift') return 'shift'
   return null
+}
+
+function isMovementDirection(
+  input: MovementDirection | PlaytestControlKey,
+): input is MovementDirection {
+  return MOVEMENT_DIRECTIONS.includes(input as MovementDirection)
+}
+
+function actionImageUrls(action: PlaytestAction): readonly string[] {
+  return [
+    ...action.frames.map((frame) => frame.imageUrl),
+    ...Object.values(action.sequences ?? {}).flatMap(
+      (frames) => frames?.map((frame) => frame.imageUrl) ?? [],
+    ),
+  ]
 }
 
 export function preloadActionFrames(
@@ -51,10 +71,10 @@ export function preloadActionFrames(
   const orderedActions = preferredAction
     ? [preferredAction, ...actions.filter((action) => action.id !== preferredAction.id)]
     : actions
-  const preferredUrls = new Set(preferredAction?.frames.map((frame) => frame.imageUrl) ?? [])
-  const imageUrls = [
-    ...new Set(orderedActions.flatMap((action) => action.frames.map((frame) => frame.imageUrl))),
-  ]
+  const preferredUrls = new Set(
+    preferredAction === undefined ? [] : actionImageUrls(preferredAction),
+  )
+  const imageUrls = [...new Set(orderedActions.flatMap(actionImageUrls))]
 
   return imageUrls.map((imageUrl) => {
     const image = imageFactory()
@@ -79,7 +99,7 @@ export function usePlaytestRuntime(
   const actionsRef = useRef(actions)
   const bindingsRef = useRef(effectiveBindings)
   const boundsRef = useRef<StageBounds>(INITIAL_BOUNDS)
-  const activeInputsRef = useRef(new Map<string, PlaytestControlKey>())
+  const activeInputsRef = useRef(new Map<string, MovementDirection>())
   const preloadedImagesRef = useRef<readonly HTMLImageElement[]>([])
   const initialRuntimeActionId = useMemo(
     () => createRuntime(actions, initialActionId).actionId,
@@ -124,53 +144,59 @@ export function usePlaytestRuntime(
   }, [])
 
   const setControl = useCallback(
-    (key: PlaytestControlKey, pressed: boolean, source: string = key) => {
-      if (pressed) activeInputsRef.current.set(source, key)
-      else activeInputsRef.current.delete(source)
-
-      const stillHeld = [...activeInputsRef.current.values()].includes(key)
+    (key: PlaytestControlKey, pressed: boolean, _source: string = key) => {
       setRuntime((current) =>
-        setControlInput(current, actionsRef.current, bindingsRef.current, key, stillHeld),
+        setControlInput(current, actionsRef.current, bindingsRef.current, key, pressed),
       )
+    },
+    [],
+  )
+
+  const setMovement = useCallback(
+    (direction: MovementDirection, pressed: boolean, source: string = direction) => {
+      if (pressed) activeInputsRef.current.set(source, direction)
+      else activeInputsRef.current.delete(source)
+      const stillHeld = [...activeInputsRef.current.values()].includes(direction)
+      setRuntime((current) => setMovementInput(current, actionsRef.current, direction, stillHeld))
     },
     [],
   )
 
   const setDirection = useCallback(
     (direction: Direction, pressed: boolean, source: string = direction) => {
-      setControl(direction === 'left' ? 'a' : 'd', pressed, source)
+      setMovement(direction, pressed, source)
     },
-    [setControl],
+    [setMovement],
   )
 
   const clearDirections = useCallback(() => {
     activeInputsRef.current.clear()
-    setRuntime((current) => {
-      const withoutLeft = setControlInput(
+    setRuntime((current) =>
+      MOVEMENT_DIRECTIONS.reduce(
+        (next, direction) => setMovementInput(next, actionsRef.current, direction, false),
         current,
-        actionsRef.current,
-        bindingsRef.current,
-        'a',
-        false,
-      )
-      return setControlInput(withoutLeft, actionsRef.current, bindingsRef.current, 'd', false)
-    })
+      ),
+    )
   }, [])
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isTypingTarget(event.target)) return
-      const control = keyboardControl(event.key, event.code)
-      if (control === null) return
+      const input = keyboardInput(event.key, event.code)
+      if (input === null) return
       event.preventDefault()
       if (event.repeat) return
-      setControl(control, true, `keyboard:${event.code || event.key}`)
+      const source = `keyboard:${event.code || event.key}`
+      if (isMovementDirection(input)) setMovement(input, true, source)
+      else setControl(input, true, source)
     }
     const handleKeyUp = (event: globalThis.KeyboardEvent) => {
-      const control = keyboardControl(event.key, event.code)
-      if (control === null) return
+      const input = keyboardInput(event.key, event.code)
+      if (input === null) return
       event.preventDefault()
-      setControl(control, false, `keyboard:${event.code || event.key}`)
+      const source = `keyboard:${event.code || event.key}`
+      if (isMovementDirection(input)) setMovement(input, false, source)
+      else setControl(input, false, source)
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -181,7 +207,7 @@ export function usePlaytestRuntime(
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', clearDirections)
     }
-  }, [clearDirections, setControl])
+  }, [clearDirections, setControl, setMovement])
 
   const selectAction = useCallback((actionId: string) => {
     setRuntime((current) => selectRuntimeAction(current, actionsRef.current, actionId))
@@ -192,6 +218,7 @@ export function usePlaytestRuntime(
     setRuntime((current) => ({
       ...current,
       x: Math.min(bounds.maxX, Math.max(bounds.minX, current.x)),
+      y: Math.min(bounds.maxY ?? current.y, Math.max(bounds.minY ?? current.y, current.y)),
     }))
   }, [])
 
@@ -199,7 +226,8 @@ export function usePlaytestRuntime(
     () => actions.find((candidate) => candidate.id === runtime.actionId) ?? null,
     [actions, runtime.actionId],
   )
-  const frame = action?.frames[runtime.frameIndex] ?? action?.frames[0] ?? null
+  const activeFrames = action === null ? undefined : framesForFacing(action, runtime.facing)
+  const frame = activeFrames?.[runtime.frameIndex] ?? activeFrames?.[0] ?? null
 
   return {
     runtime,
@@ -208,6 +236,7 @@ export function usePlaytestRuntime(
     selectAction,
     setControl,
     setDirection,
+    setMovement,
     setBounds,
   }
 }

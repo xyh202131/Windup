@@ -23,6 +23,14 @@ export interface Frame {
   durationMs: number | null
 }
 
+export type ActionDirection = 'side' | 'front' | 'back'
+
+export interface ActionSequence {
+  readonly direction: ActionDirection
+  readonly frameCount: number
+  readonly frames: Frame[]
+}
+
 export interface Action {
   /** Action 只在所属 Outfit 内唯一。 */
   id: string
@@ -33,6 +41,8 @@ export interface Action {
   fps: number
   frameCount: number
   frames: Frame[]
+  /** 可选多方向序列；旧资产的顶层 frames 始终视为 side。 */
+  sequences?: ActionSequence[]
 }
 
 export interface Outfit {
@@ -91,6 +101,12 @@ interface CharacterFrameDto {
   duration_ms: number | null
 }
 
+interface CharacterActionSequenceDto {
+  direction: ActionDirection
+  frame_count: number
+  frames: CharacterFrameDto[]
+}
+
 interface CharacterActionDto {
   id: string
   type: string
@@ -99,6 +115,7 @@ interface CharacterActionDto {
   fps: number
   frame_count: number
   frames: CharacterFrameDto[]
+  sequences?: CharacterActionSequenceDto[]
 }
 
 interface CharacterOutfitDto {
@@ -154,6 +171,15 @@ function mapAction(dto: CharacterActionDto, outfitId: string): Action {
     fps: dto.fps,
     frameCount: dto.frame_count,
     frames: dto.frames.map(mapFrame),
+    ...(dto.sequences === undefined
+      ? {}
+      : {
+          sequences: dto.sequences.map((sequence) => ({
+            direction: sequence.direction,
+            frameCount: sequence.frame_count,
+            frames: sequence.frames.map(mapFrame),
+          })),
+        }),
   }
 }
 
@@ -200,6 +226,15 @@ function toActionDto(action: Action): CharacterActionDto {
     fps: action.fps,
     frame_count: action.frameCount,
     frames: action.frames.map(toFrameDto),
+    ...(action.sequences === undefined
+      ? {}
+      : {
+          sequences: action.sequences.map((sequence) => ({
+            direction: sequence.direction,
+            frame_count: sequence.frameCount,
+            frames: sequence.frames.map(toFrameDto),
+          })),
+        }),
   }
 }
 

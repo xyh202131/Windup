@@ -27,8 +27,8 @@ export interface CreateProgressiveExportModelInput {
   generations?: readonly Generation[]
 }
 
-function orderedFrames(action: Action): readonly Frame[] {
-  const frames = [...action.frames].sort((left, right) => left.index - right.index)
+function orderedFrames(framesInput: readonly Frame[], action: Action): readonly Frame[] {
+  const frames = [...framesInput].sort((left, right) => left.index - right.index)
   const invalid = frames.find((frame, index) => frame.index !== index)
   if (invalid !== undefined) throw new Error(`${action.name}的帧序号必须从 0 连续排列`)
   return frames
@@ -44,8 +44,8 @@ function durationMs(frame: Frame, action: Action): number {
   return Math.max(1, Math.round(1000 / action.fps))
 }
 
-function exportFrames(action: Action): readonly ExportFrame[] {
-  return orderedFrames(action).map((frame) => ({
+function exportFrames(frames: readonly Frame[], action: Action): readonly ExportFrame[] {
+  return orderedFrames(frames, action).map((frame) => ({
     index: frame.index,
     imageUrl: frame.imageUrl,
     durationMs: durationMs(frame, action),
@@ -53,22 +53,36 @@ function exportFrames(action: Action): readonly ExportFrame[] {
 }
 
 function exportAction(action: Action, project: Project): ExportAction {
+  const explicitSide = action.sequences?.find((sequence) => sequence.direction === 'side')
+  const directionalSequences = [
+    {
+      direction: 'side',
+      expectedFrameCount: explicitSide?.frameCount ?? action.frameCount,
+      frames: explicitSide?.frames ?? action.frames,
+    },
+    ...(action.sequences ?? [])
+      .filter((sequence) => sequence.direction !== 'side')
+      .map((sequence) => ({
+        direction: sequence.direction,
+        expectedFrameCount: sequence.frameCount,
+        frames: sequence.frames,
+      })),
+  ].filter((sequence) => sequence.frames.length > 0)
+
   return {
     id: action.id,
     name: action.name,
     type: action.type,
     fps: action.fps,
-    sequences: [
-      {
-        direction: 'default',
-        expectedFrameCount: action.frameCount,
-        loop: action.loop,
-        anchor: { x: 0.5, y: FOOT_LINE_RATIO },
-        footY: Math.trunc(project.spriteSize.height * FOOT_LINE_RATIO),
-        qualityStatus: 'passed',
-        frames: exportFrames(action),
-      },
-    ],
+    sequences: directionalSequences.map((sequence) => ({
+      direction: sequence.direction,
+      expectedFrameCount: sequence.expectedFrameCount,
+      loop: action.loop,
+      anchor: { x: 0.5, y: FOOT_LINE_RATIO },
+      footY: Math.trunc(project.spriteSize.height * FOOT_LINE_RATIO),
+      qualityStatus: 'passed',
+      frames: exportFrames(sequence.frames, action),
+    })),
   }
 }
 
@@ -105,7 +119,9 @@ function firstFrame(
 
 function publishedFirstFrames(actions: readonly Action[]): readonly ExportFirstFrame[] {
   return actions.flatMap((action) => {
-    const frame = orderedFrames(action)[0]
+    const sideFrames =
+      action.sequences?.find((sequence) => sequence.direction === 'side')?.frames ?? action.frames
+    const frame = orderedFrames(sideFrames, action)[0]
     return frame
       ? [
           {

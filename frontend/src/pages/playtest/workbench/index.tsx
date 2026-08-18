@@ -9,6 +9,7 @@ import {
 } from './bindings'
 import { createPlaytestModel, type PlaytestModel } from './model'
 import { usePlaytestRuntime } from './runtime/use-playtest-runtime'
+import type { MovementDirection } from './runtime/runtime'
 import { PlaytestStage } from './stage'
 
 export interface PlaytestWorkbenchProps {
@@ -19,25 +20,31 @@ export interface PlaytestWorkbenchProps {
 }
 
 const controlLabels: Readonly<Record<PlaytestControlKey, string>> = {
-  a: '向左',
-  d: '向右',
   space: '空格键',
   shift: 'Shift 键',
 }
 
 const controlKeyLabels: Readonly<Record<PlaytestControlKey, string>> = {
-  a: 'A',
-  d: 'D',
   space: 'Space',
   shift: 'Shift',
 }
 
 const assignmentLabels: Readonly<Record<PlaytestControlKey, string>> = {
-  a: 'A 分配动作',
-  d: 'D 分配动作',
   space: '空格键分配动作',
   shift: 'Shift 分配动作',
 }
+
+const movementControls: readonly {
+  key: 'w' | 'a' | 's' | 'd'
+  direction: MovementDirection
+  label: string
+  gridClass: string
+}[] = [
+  { key: 'w', direction: 'up', label: '向后移动', gridClass: 'col-start-2 row-start-1' },
+  { key: 'a', direction: 'left', label: '向左移动', gridClass: 'col-start-1 row-start-2' },
+  { key: 's', direction: 'down', label: '向前移动', gridClass: 'col-start-2 row-start-2' },
+  { key: 'd', direction: 'right', label: '向右移动', gridClass: 'col-start-3 row-start-2' },
+]
 
 export function PlaytestWorkbench({
   character,
@@ -76,6 +83,7 @@ function PlaytestExperience({
 }) {
   const [bindings, setBindings] = useState(() => createDefaultActionBindings(model.actions))
   const runtime = usePlaytestRuntime(model.actions, initialActionId, bindings)
+  const locomotion = model.actions.find((action) => action.type === 'walk' || action.type === 'run')
 
   useEffect(() => {
     setBindings(createDefaultActionBindings(model.actions))
@@ -89,6 +97,15 @@ function PlaytestExperience({
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     holdControl(key, false, `pointer:${event.pointerId}:${key}`)
+  }
+  const releaseMovementPointer = (
+    event: PointerEvent<HTMLButtonElement>,
+    direction: MovementDirection,
+  ) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    runtime.setMovement(direction, false, `pointer:${event.pointerId}:${direction}`)
   }
 
   // 顶栏悬浮不占布局高度，满幅页面自己让出避让空间；pt-24 与 PageContainer 同源，改顶栏尺寸时一起改。
@@ -111,7 +128,7 @@ function PlaytestExperience({
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <p className="text-xs text-app-muted">A / D 移动 · Space 跳跃 · Shift 下蹲</p>
+            <p className="text-xs text-app-muted">W / A / S / D 移动 · Space 跳跃 · Shift 下蹲</p>
             {toolbar}
           </div>
         </header>
@@ -125,6 +142,7 @@ function PlaytestExperience({
           <PlaytestStage
             frame={runtime.frame}
             x={runtime.runtime.x}
+            y={runtime.runtime.y}
             facing={runtime.runtime.facing}
             onBoundsChange={runtime.setBounds}
           />
@@ -202,13 +220,55 @@ function PlaytestExperience({
             aria-label="角色操控"
             className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-app-surface-raised/60 bg-app-surface/95 p-2 shadow-app-float backdrop-blur-2xl sm:bottom-5"
           >
+            <div className="grid grid-cols-3 grid-rows-2 gap-1.5">
+              {movementControls.map(({ key, direction, label, gridClass }) => {
+                const pressed = runtime.runtime.held[direction]
+                const disabled =
+                  locomotion === undefined ||
+                  (direction === 'up' && !locomotion.sequences?.back?.length) ||
+                  (direction === 'down' && !locomotion.sequences?.front?.length)
+
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-label={label}
+                    aria-pressed={pressed}
+                    disabled={disabled}
+                    onPointerDown={(event) => {
+                      event.preventDefault()
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      runtime.setMovement(
+                        direction,
+                        true,
+                        `pointer:${event.pointerId}:${direction}`,
+                      )
+                    }}
+                    onPointerUp={(event) => releaseMovementPointer(event, direction)}
+                    onPointerCancel={(event) => releaseMovementPointer(event, direction)}
+                    onLostPointerCapture={(event) =>
+                      runtime.setMovement(
+                        direction,
+                        false,
+                        `pointer:${event.pointerId}:${direction}`,
+                      )
+                    }
+                    className={`${gridClass} grid h-9 w-11 touch-none place-items-center rounded-md border font-mono text-xs font-semibold uppercase transition-colors ${
+                      pressed
+                        ? 'border-app-accent bg-app-accent text-app-on-accent'
+                        : 'border-app-line bg-app-surface-raised/80 text-app-ink-soft hover:border-app-line-strong'
+                    } disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-app-line`}
+                  >
+                    {key}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="h-12 w-px bg-app-line" aria-hidden="true" />
             <div className="flex items-center gap-1.5">
               {PLAYTEST_CONTROL_KEYS.map((key) => {
-                const isHorizontal = key === 'a' || key === 'd'
-                const pressed = isHorizontal
-                  ? runtime.runtime.held[key === 'a' ? 'left' : 'right']
-                  : bindings[key] !== null && runtime.runtime.actionId === bindings[key]
-                const disabled = !isHorizontal && bindings[key] === null
+                const pressed = bindings[key] !== null && runtime.runtime.actionId === bindings[key]
+                const disabled = bindings[key] === null
                 const width = key === 'space' ? 'w-16' : key === 'shift' ? 'w-14' : 'w-11'
 
                 return (

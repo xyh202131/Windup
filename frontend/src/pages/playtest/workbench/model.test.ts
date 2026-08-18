@@ -63,6 +63,9 @@ describe('createPlaytestModel', () => {
       loop: true,
       // durationMs 为 null 时按所属动作的 fps 换算，不用前端常量顶上。
       frames: [{ imageUrl: '/idle-01.png', durationMs: 125 }],
+      sequences: {
+        side: [{ imageUrl: '/idle-01.png', durationMs: 125 }],
+      },
     })
   })
 
@@ -74,6 +77,49 @@ describe('createPlaytestModel', () => {
       '/walk-02.png',
       '/walk-03.png',
     ])
+  })
+
+  it('treats legacy frames as side and keeps independent front and back sequences', () => {
+    const directionalCharacter = structuredClone(character) as Character & {
+      outfits: Array<{
+        actions: Array<{
+          sequences?: Array<{
+            direction: 'side' | 'front' | 'back'
+            frameCount: number
+            frames: Array<{ index: number; imageUrl: string; durationMs: number | null }>
+          }>
+        }>
+      }>
+    }
+    directionalCharacter.outfits[0]!.actions[1]!.sequences = [
+      {
+        direction: 'front',
+        frameCount: 2,
+        frames: [
+          { index: 1, imageUrl: '/walk-front-02.png', durationMs: 90 },
+          { index: 0, imageUrl: '/walk-front-01.png', durationMs: 90 },
+        ],
+      },
+      {
+        direction: 'back',
+        frameCount: 1,
+        frames: [{ index: 0, imageUrl: '/walk-back-01.png', durationMs: 110 }],
+      },
+    ]
+
+    const result = createPlaytestModel(directionalCharacter, 'outfit-default')
+    const walk = result.ok ? result.model.actions.find((action) => action.id === 'walk') : undefined
+
+    expect(walk?.sequences?.side?.map((frame) => frame.imageUrl)).toEqual([
+      '/walk-01.png',
+      '/walk-02.png',
+      '/walk-03.png',
+    ])
+    expect(walk?.sequences?.front?.map((frame) => frame.imageUrl)).toEqual([
+      '/walk-front-01.png',
+      '/walk-front-02.png',
+    ])
+    expect(walk?.sequences?.back?.map((frame) => frame.imageUrl)).toEqual(['/walk-back-01.png'])
   })
 
   it('drops actions that have no frames to play', () => {

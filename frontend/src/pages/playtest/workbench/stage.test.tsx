@@ -6,12 +6,13 @@ import { PlaytestStage } from './stage'
 
 afterEach(cleanup)
 
-function renderStage(x: number) {
+function renderStage(x: number, y = 0, facing: 'left' | 'right' | 'front' | 'back' = 'right') {
   render(
     <PlaytestStage
       frame={{ imageUrl: '/idle-01.png', durationMs: 100 }}
       x={x}
-      facing={1}
+      y={y}
+      facing={facing}
       onBoundsChange={() => undefined}
     />,
   )
@@ -20,9 +21,9 @@ function renderStage(x: number) {
 
 describe('PlaytestStage', () => {
   it('centers and moves the sprite through a single transform', () => {
-    const sprite = renderStage(40)
+    const sprite = renderStage(40, -25)
 
-    expect(sprite?.style.transform).toBe('translate3d(calc(-50% + 40px), 0, 0) scaleX(1)')
+    expect(sprite?.style.transform).toBe('translate3d(calc(-50% + 40px), -25px, 0) scaleX(1)')
     expect(sprite?.getAttribute('loading')).toBe('eager')
     expect(sprite?.getAttribute('decoding')).toBe('async')
     expect(sprite?.getAttribute('fetchpriority')).toBe('high')
@@ -31,8 +32,16 @@ describe('PlaytestStage', () => {
     expect(sprite?.className).not.toMatch(/(^|\s)-?translate-/)
   })
 
+  it('mirrors only the left-facing side sequence', () => {
+    expect(renderStage(0, 0, 'left')?.style.transform).toContain('scaleX(-1)')
+    cleanup()
+    expect(renderStage(0, 0, 'front')?.style.transform).toContain('scaleX(1)')
+  })
+
   it('shows an empty stage when the action has no frame to play', () => {
-    render(<PlaytestStage frame={null} x={0} facing={1} onBoundsChange={() => undefined} />)
+    render(
+      <PlaytestStage frame={null} x={0} y={0} facing="right" onBoundsChange={() => undefined} />,
+    )
 
     expect(screen.getByText('暂无可播放帧')).toBeTruthy()
   })

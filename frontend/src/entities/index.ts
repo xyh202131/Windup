@@ -34,6 +34,8 @@ export type {
 /* 角色 —— 资产本体；造型、动作、帧都在这棵树里 */
 export type {
   Action,
+  ActionDirection,
+  ActionSequence,
   ActionType,
   Character,
   CharacterApis,

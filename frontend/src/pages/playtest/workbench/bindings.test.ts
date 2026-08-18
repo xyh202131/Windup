@@ -14,7 +14,7 @@ function action(id: string, type: string): PlaytestAction {
 }
 
 describe('playtest action bindings', () => {
-  it('binds fixed platform controls from exact action types', () => {
+  it('binds jump and crouch actions without putting movement keys in the assignment model', () => {
     const actions = [
       action('idle', 'idle'),
       action('walk', 'walk'),
@@ -24,20 +24,16 @@ describe('playtest action bindings', () => {
 
     expect(createDefaultActionBindings(actions)).toEqual({
       space: 'jump',
-      a: 'walk',
       shift: 'crouch',
-      d: 'walk',
     })
   })
 
-  it('uses run when walk is unavailable and leaves unsupported controls unassigned', () => {
+  it('leaves unsupported action controls unassigned', () => {
     const actions = [action('run', 'run'), action('custom-crouch', 'custom')]
 
     expect(createDefaultActionBindings(actions)).toEqual({
       space: null,
-      a: 'run',
       shift: null,
-      d: 'run',
     })
   })
 })
