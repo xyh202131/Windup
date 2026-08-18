@@ -11,6 +11,7 @@ export type {
   CreditAccount,
   CreditTransaction,
   CreditTransactionDirection,
+  InviteCode,
   QuotaApis,
   QuotaTransactionFilters,
   QuotaTransactionPageQuery,

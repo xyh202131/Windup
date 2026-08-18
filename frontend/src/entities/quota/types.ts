@@ -37,7 +37,18 @@ export interface QuotaTransactionFilters {
 
 export type QuotaTransactionPageQuery = PageQuery & QuotaTransactionFilters
 
+/** 当前登录用户未过期的邀请码；usedCount 只统计当前码的成功注册次数。 */
+export interface InviteCode {
+  code: string
+  usedCount: number
+  expiresAt: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface QuotaApis {
   getBalance(): Promise<CreditAccount>
   listTransactions(query?: QuotaTransactionPageQuery): Promise<Paged<CreditTransaction>>
+  getInviteCode(): Promise<InviteCode>
+  generateInviteCode(): Promise<InviteCode>
 }

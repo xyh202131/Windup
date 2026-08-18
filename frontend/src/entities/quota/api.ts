@@ -1,6 +1,7 @@
 import type {
   CreditAccount,
   CreditTransaction,
+  InviteCode,
   QuotaApis,
   QuotaTransactionPageQuery,
 } from './types'
@@ -30,6 +31,14 @@ interface CreditTransactionDto {
   create_at: string
 }
 
+interface InviteCodeDto {
+  code: string
+  used_count: number
+  expires_at: string
+  create_at: string
+  update_at: string
+}
+
 export interface CreateQuotaApisOptions extends ApiClientOptions {
   client?: ApiClient
 }
@@ -57,6 +66,16 @@ function toCreditTransaction(dto: CreditTransactionDto): CreditTransaction {
     refId: dto.ref_id,
     balanceAfter: dto.balance_after,
     createdAt: dto.create_at,
+  }
+}
+
+function toInviteCode(dto: InviteCodeDto): InviteCode {
+  return {
+    code: dto.code,
+    usedCount: dto.used_count,
+    expiresAt: dto.expires_at,
+    createdAt: dto.create_at,
+    updatedAt: dto.update_at,
   }
 }
 
@@ -90,6 +109,14 @@ export function createQuotaApis(options: CreateQuotaApisOptions = {}): QuotaApis
       )
       return { ...result, items: result.items.map(toCreditTransaction) }
     },
+    async getInviteCode() {
+      return toInviteCode(await protectedClient.request<InviteCodeDto>('/quota/invite/code'))
+    },
+    async generateInviteCode() {
+      return toInviteCode(
+        await protectedClient.request<InviteCodeDto>('/quota/invite/generate', { method: 'POST' }),
+      )
+    },
   }
 }
 
@@ -104,4 +131,6 @@ function getDefaultApis(): QuotaApis {
 export const quotaApis: QuotaApis = {
   getBalance: () => getDefaultApis().getBalance(),
   listTransactions: (query) => getDefaultApis().listTransactions(query),
+  getInviteCode: () => getDefaultApis().getInviteCode(),
+  generateInviteCode: () => getDefaultApis().generateInviteCode(),
 }
