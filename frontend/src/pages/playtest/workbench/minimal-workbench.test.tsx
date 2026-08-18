@@ -94,6 +94,20 @@ function pressedState(actionName: string) {
 afterEach(cleanup)
 
 describe('PlaytestWorkbench minimal control path', () => {
+  it('shows a clear error when the requested outfit does not exist', () => {
+    render(
+      <PlaytestWorkbench
+        character={character}
+        outfitId="missing-outfit"
+        initialActionId={IDLE_ACTION_ID}
+      />,
+    )
+
+    expect(screen.getByRole('main', { name: '预览台' }).textContent).toContain(
+      '找不到指定造型，无法进入预览台。',
+    )
+  })
+
   it('shows one stage, the bound actions, and direct character controls', () => {
     renderWorkbench()
 
@@ -188,5 +202,33 @@ describe('PlaytestWorkbench minimal control path', () => {
     fireEvent.pointerDown(left, { pointerId: 9 })
     fireEvent.lostPointerCapture(left, { pointerId: 9 })
     expect(left.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('uses the assigned action for pointer press, release, cancel, and lost capture', () => {
+    renderWorkbench()
+
+    const space = screen.getByRole('button', { name: '空格键' })
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    Object.assign(space, {
+      setPointerCapture,
+      hasPointerCapture: () => true,
+      releasePointerCapture,
+    })
+
+    fireEvent.pointerDown(space, { pointerId: 11 })
+    expect(setPointerCapture).toHaveBeenCalledWith(11)
+    expect(pressedState('跳跃')).toBe('true')
+
+    fireEvent.pointerUp(space, { pointerId: 11 })
+    expect(releasePointerCapture).toHaveBeenCalledWith(11)
+
+    fireEvent.pointerDown(space, { pointerId: 12 })
+    fireEvent.pointerCancel(space, { pointerId: 12 })
+    expect(releasePointerCapture).toHaveBeenCalledWith(12)
+
+    fireEvent.pointerDown(space, { pointerId: 13 })
+    fireEvent.lostPointerCapture(space, { pointerId: 13 })
+    expect(space.getAttribute('aria-pressed')).toBe('true')
   })
 })
