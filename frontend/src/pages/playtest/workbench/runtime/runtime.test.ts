@@ -87,6 +87,24 @@ describe('playtest runtime', () => {
     expect(advanced).toMatchObject({ facing: 'back', held: { right: true, up: true } })
   })
 
+  it('returns to the most recently pressed direction that is still held', () => {
+    const left = setMovementInput(
+      createRuntime(directionalActions, 'idle'),
+      directionalActions,
+      'left',
+      true,
+    )
+    const up = setMovementInput(left, directionalActions, 'up', true)
+    const right = setMovementInput(up, directionalActions, 'right', true)
+    const released = setMovementInput(right, directionalActions, 'right', false)
+
+    expect(released).toMatchObject({
+      facing: 'back',
+      held: { left: true, up: true, right: false },
+      heldOrder: ['left', 'up'],
+    })
+  })
+
   it('uses front and back sequences while horizontal facing reuses side frames', () => {
     const walk = directionalActions.find((action) => action.id === 'walk')!
 

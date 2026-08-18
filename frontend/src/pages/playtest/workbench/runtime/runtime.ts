@@ -20,6 +20,7 @@ export interface PlaytestRuntime {
   readonly y: number
   readonly facing: Facing
   readonly held: Readonly<Record<MovementDirection, boolean>>
+  readonly heldOrder: readonly MovementDirection[]
 }
 
 const EMPTY_HELD: PlaytestRuntime['held'] = {
@@ -83,6 +84,7 @@ export function createRuntime(
     y: 0,
     facing: 'right',
     held: EMPTY_HELD,
+    heldOrder: [],
   }
 }
 
@@ -133,12 +135,9 @@ function supportedDirection(action: PlaytestAction, direction: MovementDirection
   return (framesForFacing(action, facingForDirection(direction))?.length ?? 0) > 0
 }
 
-function remainingFacing(held: PlaytestRuntime['held'], fallback: Facing): Facing {
-  if (held.left) return 'left'
-  if (held.right) return 'right'
-  if (held.up) return 'back'
-  if (held.down) return 'front'
-  return fallback
+function remainingFacing(heldOrder: PlaytestRuntime['heldOrder'], fallback: Facing): Facing {
+  const direction = heldOrder.at(-1)
+  return direction === undefined ? fallback : facingForDirection(direction)
 }
 
 export function setMovementInput(
@@ -160,6 +159,9 @@ export function setMovementInput(
   }
 
   const held = { ...runtime.held, [direction]: pressed }
+  const heldOrder = pressed
+    ? [...runtime.heldOrder, direction]
+    : runtime.heldOrder.filter((heldDirection) => heldDirection !== direction)
   const isMoving = horizontalAxis(held) !== 0 || verticalAxis(held) !== 0
   const shouldReturnToIdle =
     !isMoving && activeAction !== undefined && isLocomotionAction(activeAction)
@@ -172,12 +174,13 @@ export function setMovementInput(
   const nextFacing = pressed
     ? facingForDirection(direction)
     : runtime.facing === facingForDirection(direction)
-      ? remainingFacing(held, runtime.facing)
+      ? remainingFacing(heldOrder, runtime.facing)
       : runtime.facing
 
   return {
     ...runtime,
     held,
+    heldOrder,
     facing: nextFacing,
     actionId: nextActionId,
     frameIndex: nextActionId === runtime.actionId ? runtime.frameIndex : 0,
