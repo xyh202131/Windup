@@ -88,6 +88,14 @@
             "title": "Name",
             "type": "string"
           },
+          "sequences": {
+            "description": "可选多方向序列；旧数据的 frames 视为 side",
+            "items": {
+              "$ref": "#/components/schemas/CharacterActionSequence"
+            },
+            "title": "Sequences",
+            "type": "array"
+          },
           "type": {
             "description": "动作类型: idle / walk / attack / custom",
             "title": "Type",
@@ -184,6 +192,40 @@
           "action_type"
         ],
         "title": "CharacterActionGenerateRequest",
+        "type": "object"
+      },
+      "CharacterActionSequence": {
+        "description": "一个动作的单方向帧序列。side 可供左右镜像复用。",
+        "properties": {
+          "direction": {
+            "enum": [
+              "side",
+              "front",
+              "back"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "frame_count": {
+            "description": "该方向声明的帧数",
+            "minimum": 0.0,
+            "title": "Frame Count",
+            "type": "integer"
+          },
+          "frames": {
+            "description": "该方向帧列表",
+            "items": {
+              "$ref": "#/components/schemas/CharacterFrame"
+            },
+            "title": "Frames",
+            "type": "array"
+          }
+        },
+        "required": [
+          "direction",
+          "frame_count"
+        ],
+        "title": "CharacterActionSequence",
         "type": "object"
       },
       "CharacterCreate": {
