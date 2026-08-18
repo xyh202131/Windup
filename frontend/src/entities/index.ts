@@ -10,7 +10,9 @@ export type {
   CreateQuotaApisOptions,
   CreditAccount,
   CreditTransaction,
+  CreditTransactionDirection,
   QuotaApis,
+  QuotaTransactionFilters,
   QuotaTransactionPageQuery,
 } from './quota'
 

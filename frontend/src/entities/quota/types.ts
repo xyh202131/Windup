@@ -24,7 +24,18 @@ export interface CreditTransaction {
   createdAt: string
 }
 
-export type QuotaTransactionPageQuery = PageQuery
+export type CreditTransactionDirection = 'income' | 'expense'
+
+export interface QuotaTransactionFilters {
+  direction?: CreditTransactionDirection
+  reason?: number
+  /** ISO 时刻，包含该边界。 */
+  createdFrom?: string
+  /** ISO 时刻，不包含该边界。 */
+  createdBefore?: string
+}
+
+export type QuotaTransactionPageQuery = PageQuery & QuotaTransactionFilters
 
 export interface QuotaApis {
   getBalance(): Promise<CreditAccount>
