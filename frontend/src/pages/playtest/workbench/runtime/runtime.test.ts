@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
+import type { PlaytestActionBindings } from '../bindings'
 import type { PlaytestAction } from '../model'
-import { advanceRuntime, createRuntime, selectRuntimeAction, setDirectionInput } from './runtime'
+import {
+  advanceRuntime,
+  createRuntime,
+  selectRuntimeAction,
+  setControlInput,
+  setDirectionInput,
+} from './runtime'
 
 const actions: readonly PlaytestAction[] = [
   {
@@ -36,6 +43,13 @@ const actions: readonly PlaytestAction[] = [
   },
 ]
 
+const bindings: PlaytestActionBindings = {
+  space: 'attack',
+  a: 'attack',
+  shift: null,
+  d: 'walk',
+}
+
 describe('playtest runtime', () => {
   it('binds walk while a direction is held and returns to idle on release', () => {
     const idle = createRuntime(actions, 'idle')
@@ -63,6 +77,66 @@ describe('playtest runtime', () => {
 
     expect(firstTick).toMatchObject({ x: 6, frameIndex: 0, frameElapsedMs: 40 })
     expect(secondTick).toMatchObject({ x: 12, frameIndex: 1, frameElapsedMs: 0 })
+  })
+
+  it('turns without moving when the active action is not walk or run', () => {
+    const nonLocomotionActions = actions.filter((action) => action.type !== 'walk')
+    const attacking = selectRuntimeAction(
+      createRuntime(nonLocomotionActions, 'idle'),
+      nonLocomotionActions,
+      'attack',
+    )
+    const facingLeft = setDirectionInput(attacking, nonLocomotionActions, 'left', true)
+    const advanced = advanceRuntime(
+      facingLeft,
+      nonLocomotionActions,
+      100,
+      { minX: -100, maxX: 100 },
+      150,
+    )
+
+    expect(advanced).toMatchObject({ x: 0, facing: -1, actionId: 'attack' })
+  })
+
+  it('uses the assigned action while keeping horizontal facing independent from movement', () => {
+    const attackingLeft = setControlInput(
+      createRuntime(actions, 'idle'),
+      actions,
+      bindings,
+      'a',
+      true,
+    )
+    const advanced = advanceRuntime(attackingLeft, actions, 100, { minX: -100, maxX: 100 }, 150)
+
+    expect(advanced).toMatchObject({ actionId: 'attack', facing: -1, x: 0 })
+  })
+
+  it('triggers an assigned vertical action and ignores an unassigned control', () => {
+    const idle = createRuntime(actions, 'idle')
+    const attacking = setControlInput(idle, actions, bindings, 'space', true)
+
+    expect(attacking).toMatchObject({ actionId: 'attack', frameIndex: 0 })
+    expect(setControlInput(idle, actions, bindings, 'shift', true)).toBe(idle)
+    expect(setControlInput(attacking, actions, bindings, 'space', false)).toBe(attacking)
+    expect(setControlInput(idle, actions, { ...bindings, space: 'missing' }, 'space', true)).toBe(
+      idle,
+    )
+    expect(setControlInput(idle, actions, { ...bindings, space: 'idle' }, 'space', true)).toBe(idle)
+  })
+
+  it('restarts a completed one-shot action when its assigned key is pressed again', () => {
+    const attacking = setControlInput(
+      createRuntime(actions, 'idle'),
+      actions,
+      bindings,
+      'space',
+      true,
+    )
+    const completed = advanceRuntime(attacking, actions, 400, { minX: -100, maxX: 100 }, 150)
+    const restarted = setControlInput(completed, actions, bindings, 'space', true)
+
+    expect(completed).toMatchObject({ actionId: 'attack', frameIndex: 1, frameElapsedMs: 150 })
+    expect(restarted).toMatchObject({ actionId: 'attack', frameIndex: 0, frameElapsedMs: 0 })
   })
 
   it('loops a looping action back to its first frame', () => {

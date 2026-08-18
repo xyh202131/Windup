@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest'
+
+import type { PlaytestAction } from './model'
+import { createDefaultActionBindings } from './bindings'
+
+function action(id: string, type: string): PlaytestAction {
+  return {
+    id,
+    name: id,
+    type,
+    loop: true,
+    frames: [{ imageUrl: `/${id}.png`, durationMs: 100 }],
+  }
+}
+
+describe('playtest action bindings', () => {
+  it('binds fixed platform controls from exact action types', () => {
+    const actions = [
+      action('idle', 'idle'),
+      action('walk', 'walk'),
+      action('jump', 'jump'),
+      action('crouch', 'crouch'),
+    ]
+
+    expect(createDefaultActionBindings(actions)).toEqual({
+      space: 'jump',
+      a: 'walk',
+      shift: 'crouch',
+      d: 'walk',
+    })
+  })
+
+  it('uses run when walk is unavailable and leaves unsupported controls unassigned', () => {
+    const actions = [action('run', 'run'), action('custom-crouch', 'custom')]
+
+    expect(createDefaultActionBindings(actions)).toEqual({
+      space: null,
+      a: 'run',
+      shift: null,
+      d: 'run',
+    })
+  })
+})

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Character } from '@/entities'
 
@@ -49,6 +49,26 @@ const character: Character = {
           fps: 10,
           frameCount: 2,
           frames: [frame(0, '/walk-01.png'), frame(1, '/walk-02.png')],
+        },
+        {
+          id: 'jump',
+          outfitId: OUTFIT_ID,
+          name: '跳跃',
+          type: 'jump',
+          loop: false,
+          fps: 10,
+          frameCount: 2,
+          frames: [frame(0, '/jump-01.png'), frame(1, '/jump-02.png')],
+        },
+        {
+          id: 'attack',
+          outfitId: OUTFIT_ID,
+          name: '攻击',
+          type: 'attack',
+          loop: false,
+          fps: 10,
+          frameCount: 2,
+          frames: [frame(0, '/attack-01.png'), frame(1, '/attack-02.png')],
         },
       ],
     },
@@ -104,5 +124,61 @@ describe('PlaytestWorkbench minimal control path', () => {
 
     fireEvent.keyUp(window, { key: 'ArrowRight', code: 'ArrowRight' })
     expect(pressedState('待机')).toBe('true')
+  })
+
+  it('shows fixed default assignments and disables controls without an action', () => {
+    renderWorkbench()
+
+    expect((screen.getByLabelText('空格键分配动作') as HTMLSelectElement).value).toBe('jump')
+    expect((screen.getByLabelText('A 分配动作') as HTMLSelectElement).value).toBe('walk')
+    expect((screen.getByLabelText('Shift 分配动作') as HTMLSelectElement).value).toBe('')
+    expect((screen.getByLabelText('D 分配动作') as HTMLSelectElement).value).toBe('walk')
+    expect((screen.getByRole('button', { name: 'Shift 键' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    expect((screen.getByRole('button', { name: '向左' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('uses an adjusted assignment immediately without reloading the action frames', () => {
+    renderWorkbench()
+
+    fireEvent.change(screen.getByLabelText('空格键分配动作'), {
+      target: { value: 'attack' },
+    })
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' })
+
+    expect(pressedState('攻击')).toBe('true')
+  })
+
+  it('uses the same control path for pointer press and release', () => {
+    renderWorkbench()
+
+    const left = screen.getByRole('button', { name: '向左' })
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    Object.assign(left, {
+      setPointerCapture,
+      hasPointerCapture: () => true,
+      releasePointerCapture,
+    })
+
+    fireEvent.pointerDown(left, { pointerId: 7 })
+    expect(setPointerCapture).toHaveBeenCalledWith(7)
+    expect(left.getAttribute('aria-pressed')).toBe('true')
+    expect(pressedState('行走')).toBe('true')
+
+    fireEvent.pointerUp(left, { pointerId: 7 })
+    expect(releasePointerCapture).toHaveBeenCalledWith(7)
+    expect(left.getAttribute('aria-pressed')).toBe('false')
+    expect(pressedState('待机')).toBe('true')
+
+    fireEvent.pointerDown(left, { pointerId: 8 })
+    fireEvent.pointerCancel(left, { pointerId: 8 })
+    expect(releasePointerCapture).toHaveBeenCalledWith(8)
+    expect(pressedState('待机')).toBe('true')
+
+    fireEvent.pointerDown(left, { pointerId: 9 })
+    fireEvent.lostPointerCapture(left, { pointerId: 9 })
+    expect(left.getAttribute('aria-pressed')).toBe('false')
   })
 })

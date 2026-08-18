@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import {
+  createDefaultActionBindings,
+  type PlaytestActionBindings,
+  type PlaytestControlKey,
+} from '../bindings'
 import type { PlaytestAction } from '../model'
 import {
   advanceRuntime,
   createRuntime,
   selectRuntimeAction,
-  setDirectionInput,
+  setControlInput,
   type Direction,
   type StageBounds,
 } from './runtime'
@@ -24,10 +29,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
   )
 }
 
-function keyDirection(key: string): Direction | null {
+function keyboardControl(key: string, code: string): PlaytestControlKey | null {
   const normalized = key.toLowerCase()
-  if (normalized === 'a' || normalized === 'arrowleft') return 'left'
-  if (normalized === 'd' || normalized === 'arrowright') return 'right'
+  if (normalized === 'arrowleft') return 'a'
+  if (normalized === 'arrowright') return 'd'
+  if (normalized === 'a' || normalized === 'd') return normalized
+  if (code === 'Space' || key === ' ' || normalized === 'spacebar') return 'space'
+  if (code === 'ShiftLeft' || code === 'ShiftRight' || normalized === 'shift') return 'shift'
   return null
 }
 
@@ -61,11 +69,17 @@ export function preloadActionFrames(
 export function usePlaytestRuntime(
   actions: readonly PlaytestAction[],
   initialActionId: string | null,
+  bindings?: PlaytestActionBindings,
 ) {
+  const effectiveBindings = useMemo(
+    () => bindings ?? createDefaultActionBindings(actions),
+    [actions, bindings],
+  )
   const [runtime, setRuntime] = useState(() => createRuntime(actions, initialActionId))
   const actionsRef = useRef(actions)
+  const bindingsRef = useRef(effectiveBindings)
   const boundsRef = useRef<StageBounds>(INITIAL_BOUNDS)
-  const activeInputsRef = useRef(new Map<string, Direction>())
+  const activeInputsRef = useRef(new Map<string, PlaytestControlKey>())
   const preloadedImagesRef = useRef<readonly HTMLImageElement[]>([])
   const initialRuntimeActionId = useMemo(
     () => createRuntime(actions, initialActionId).actionId,
@@ -77,6 +91,10 @@ export function usePlaytestRuntime(
     activeInputsRef.current.clear()
     setRuntime(createRuntime(actions, initialActionId))
   }, [actions, initialActionId])
+
+  useEffect(() => {
+    bindingsRef.current = effectiveBindings
+  }, [effectiveBindings])
 
   useEffect(() => {
     preloadedImagesRef.current = preloadActionFrames(actions, initialRuntimeActionId)
@@ -105,39 +123,54 @@ export function usePlaytestRuntime(
     return () => cancelAnimationFrame(animationFrame)
   }, [])
 
-  const setDirection = useCallback(
-    (direction: Direction, pressed: boolean, source: string = direction) => {
-      if (pressed) activeInputsRef.current.set(source, direction)
+  const setControl = useCallback(
+    (key: PlaytestControlKey, pressed: boolean, source: string = key) => {
+      if (pressed) activeInputsRef.current.set(source, key)
       else activeInputsRef.current.delete(source)
 
-      const stillHeld = [...activeInputsRef.current.values()].includes(direction)
-      setRuntime((current) => setDirectionInput(current, actionsRef.current, direction, stillHeld))
+      const stillHeld = [...activeInputsRef.current.values()].includes(key)
+      setRuntime((current) =>
+        setControlInput(current, actionsRef.current, bindingsRef.current, key, stillHeld),
+      )
     },
     [],
+  )
+
+  const setDirection = useCallback(
+    (direction: Direction, pressed: boolean, source: string = direction) => {
+      setControl(direction === 'left' ? 'a' : 'd', pressed, source)
+    },
+    [setControl],
   )
 
   const clearDirections = useCallback(() => {
     activeInputsRef.current.clear()
     setRuntime((current) => {
-      const withoutLeft = setDirectionInput(current, actionsRef.current, 'left', false)
-      return setDirectionInput(withoutLeft, actionsRef.current, 'right', false)
+      const withoutLeft = setControlInput(
+        current,
+        actionsRef.current,
+        bindingsRef.current,
+        'a',
+        false,
+      )
+      return setControlInput(withoutLeft, actionsRef.current, bindingsRef.current, 'd', false)
     })
   }, [])
 
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isTypingTarget(event.target)) return
-      const direction = keyDirection(event.key)
-      if (direction === null) return
+      const control = keyboardControl(event.key, event.code)
+      if (control === null) return
       event.preventDefault()
       if (event.repeat) return
-      setDirection(direction, true, `keyboard:${event.code || event.key}`)
+      setControl(control, true, `keyboard:${event.code || event.key}`)
     }
     const handleKeyUp = (event: globalThis.KeyboardEvent) => {
-      const direction = keyDirection(event.key)
-      if (direction === null) return
+      const control = keyboardControl(event.key, event.code)
+      if (control === null) return
       event.preventDefault()
-      setDirection(direction, false, `keyboard:${event.code || event.key}`)
+      setControl(control, false, `keyboard:${event.code || event.key}`)
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -148,7 +181,7 @@ export function usePlaytestRuntime(
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', clearDirections)
     }
-  }, [clearDirections, setDirection])
+  }, [clearDirections, setControl])
 
   const selectAction = useCallback((actionId: string) => {
     setRuntime((current) => selectRuntimeAction(current, actionsRef.current, actionId))
@@ -173,6 +206,7 @@ export function usePlaytestRuntime(
     action,
     frame,
     selectAction,
+    setControl,
     setDirection,
     setBounds,
   }

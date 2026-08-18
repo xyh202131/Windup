@@ -1,3 +1,4 @@
+import type { PlaytestActionBindings, PlaytestControlKey } from '../bindings'
 import type { PlaytestAction } from '../model'
 
 export type Direction = 'left' | 'right'
@@ -83,17 +84,55 @@ function frameDurationMs(action: PlaytestAction, frameIndex: number): number {
   return Math.max(1, action.frames[frameIndex]?.durationMs ?? 1)
 }
 
+function isLocomotionAction(action: PlaytestAction): boolean {
+  return action.type === 'walk' || action.type === 'run'
+}
+
 export function setDirectionInput(
   runtime: PlaytestRuntime,
   actions: readonly PlaytestAction[],
   direction: Direction,
   pressed: boolean,
 ): PlaytestRuntime {
+  const locomotion = actionByType(actions, 'walk') ?? actionByType(actions, 'run')
+  return setControlInput(
+    runtime,
+    actions,
+    { a: locomotion?.id ?? null, d: locomotion?.id ?? null, space: null, shift: null },
+    direction === 'left' ? 'a' : 'd',
+    pressed,
+  )
+}
+
+export function setControlInput(
+  runtime: PlaytestRuntime,
+  actions: readonly PlaytestAction[],
+  bindings: PlaytestActionBindings,
+  key: PlaytestControlKey,
+  pressed: boolean,
+): PlaytestRuntime {
+  if (key === 'space' || key === 'shift') {
+    if (!pressed || bindings[key] === null) return runtime
+    const action = actionById(actions, bindings[key])
+    if (action === undefined) return runtime
+    if (action.id !== runtime.actionId) return selectRuntimeAction(runtime, actions, action.id)
+    if (action.loop) return runtime
+    return { ...runtime, frameIndex: 0, frameElapsedMs: 0 }
+  }
+
+  const direction: Direction = key === 'a' ? 'left' : 'right'
   if (runtime.held[direction] === pressed) return runtime
 
   const held = { ...runtime.held, [direction]: pressed }
   const axis = horizontalAxis(held)
-  const action = axis === 0 ? actionByType(actions, 'idle') : actionByType(actions, 'walk')
+  const activeAction = actionById(actions, runtime.actionId)
+  const boundKey = axis < 0 ? 'a' : 'd'
+  const boundAction = axis === 0 ? undefined : actionById(actions, bindings[boundKey])
+  const shouldReturnToIdle =
+    axis === 0 &&
+    (activeAction?.id === bindings[key] ||
+      (activeAction !== undefined && isLocomotionAction(activeAction)))
+  const action = shouldReturnToIdle ? actionByType(actions, 'idle') : boundAction
   const nextActionId = action?.id ?? runtime.actionId
 
   return {
@@ -119,9 +158,10 @@ export function advanceRuntime(
   if (action === undefined) return runtime
 
   const axis = horizontalAxis(runtime.held)
+  const movementAxis = isLocomotionAction(action) ? axis : 0
   const nextX = Math.min(
     bounds.maxX,
-    Math.max(bounds.minX, runtime.x + (axis * movementSpeed * deltaMs) / 1000),
+    Math.max(bounds.minX, runtime.x + (movementAxis * movementSpeed * deltaMs) / 1000),
   )
   const lastFrameIndex = action.frames.length - 1
   let frameIndex = Math.min(runtime.frameIndex, lastFrameIndex)
