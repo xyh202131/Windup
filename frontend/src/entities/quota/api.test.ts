@@ -88,6 +88,30 @@ describe('createQuotaApis', () => {
     })
   })
 
+  it('将方向、原因和时间范围作为服务端筛选参数', async () => {
+    requestList.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 })
+
+    await createQuotaApis({ client }).listTransactions({
+      page: 1,
+      pageSize: 50,
+      direction: 'expense',
+      reason: 3,
+      createdFrom: '2026-08-09T16:00:00.000Z',
+      createdBefore: '2026-08-12T16:00:00.000Z',
+    } as never)
+
+    expect(requestList).toHaveBeenCalledWith('/quota/transactions', {
+      query: {
+        page: 1,
+        page_size: 50,
+        direction: 'expense',
+        reason: 3,
+        created_from: '2026-08-09T16:00:00.000Z',
+        created_before: '2026-08-12T16:00:00.000Z',
+      },
+    })
+  })
+
   it('读取并映射当前用户的邀请码', async () => {
     request.mockResolvedValue({
       code: 'AB23CD45',

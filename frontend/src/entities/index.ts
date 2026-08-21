@@ -10,6 +10,7 @@ export type {
   CreateQuotaApisOptions,
   CreditAccount,
   CreditTransaction,
+  CreditTransactionDirection,
   InviteCode,
   CreditTransactionDirection,
   QuotaApis,

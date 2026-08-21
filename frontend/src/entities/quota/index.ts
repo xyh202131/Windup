@@ -3,6 +3,7 @@ export type { CreateQuotaApisOptions } from './api'
 export type {
   CreditAccount,
   CreditTransaction,
+  CreditTransactionDirection,
   InviteCode,
   CreditTransactionDirection,
   QuotaApis,
